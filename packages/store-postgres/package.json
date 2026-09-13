@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "url": "git+https://github.com/anidoesdev/MemNest.git",
     "directory": "packages/store-postgres"
   },
-  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/store-postgres#readme",
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/store-postgres#readme",
   "bugs": {
-    "url": "https://github.com/anidoesdev/OxBow/issues"
+    "url": "https://github.com/anidoesdev/MemNest/issues"
   },
   "keywords": [
     "memnest",

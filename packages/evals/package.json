@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "url": "git+https://github.com/anidoesdev/MemNest.git",
     "directory": "packages/evals"
   },
-  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/evals#readme",
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/evals#readme",
   "bugs": {
-    "url": "https://github.com/anidoesdev/OxBow/issues"
+    "url": "https://github.com/anidoesdev/MemNest/issues"
   },
   "keywords": [
     "memnest",

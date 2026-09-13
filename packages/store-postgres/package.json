@@ -1,0 +1,60 @@
+{
+  "name": "@memnest/store-postgres",
+  "version": "0.1.0",
+  "description": "Postgres + pgvector store for Memnest: full-text and vector search, in its own memnest schema.",
+  "license": "MIT",
+  "keywords": [
+    "memnest",
+    "memory",
+    "ai-agents",
+    "llm",
+    "rag",
+    "embeddings",
+    "knowledge-graph",
+    "postgres",
+    "pgvector",
+    "vector-search",
+    "hybrid-search"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint:pkg": "publint && attw --pack . --profile node16"
+  },
+  "dependencies": {
+    "@memnest/core": "workspace:^",
+    "@types/pg": "^8.15.5",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@memnest/store-contract": "workspace:*"
+  }
+}

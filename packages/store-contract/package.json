@@ -1,0 +1,17 @@
+{
+  "name": "@memnest/store-contract",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The behavioural contract every Memnest MemoryStore must pass. Internal, not published.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@memnest/core": "workspace:*"
+  }
+}

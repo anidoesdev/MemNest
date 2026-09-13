@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No ambient Node or DOM types: `fs`, `Buffer`, `fetch` and friends must not typecheck in core.
+    "types": []
+  },
+  "include": ["src"]
+}

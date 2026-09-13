@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "test"],
+  // Node's types already declare the handful of web globals core relies on.
+  "exclude": ["src/globals.d.ts"]
+}

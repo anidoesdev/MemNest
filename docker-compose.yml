@@ -1,0 +1,23 @@
+# Postgres 16 + pgvector for Memnest. The server and dashboard join this file in M6/M7.
+#   docker compose up -d
+#   export MEMNEST_DATABASE_URL=postgres://memnest:memnest@localhost:5432/memnest
+#   memnest migrate
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: memnest
+      POSTGRES_PASSWORD: memnest
+      POSTGRES_DB: memnest
+    ports:
+      - '5432:5432'
+    volumes:
+      - memnest-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U memnest -d memnest']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  memnest-pg:

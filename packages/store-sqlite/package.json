@@ -1,0 +1,58 @@
+{
+  "name": "@memnest/store-sqlite",
+  "version": "0.1.0",
+  "description": "SQLite + FTS5 store for Memnest. Lexical-only: capabilities().vector is false.",
+  "license": "MIT",
+  "keywords": [
+    "memnest",
+    "memory",
+    "ai-agents",
+    "llm",
+    "rag",
+    "embeddings",
+    "knowledge-graph",
+    "sqlite",
+    "fts5"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint:pkg": "publint && attw --pack . --profile node16"
+  },
+  "dependencies": {
+    "@memnest/core": "workspace:^",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@memnest/store-contract": "workspace:*"
+  }
+}

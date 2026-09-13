@@ -1,0 +1,622 @@
+import { readFileSync } from 'node:fs';
+import { extname } from 'node:path';
+import { parseArgs } from 'node:util';
+import {
+  createMemnest,
+  MEMORY_KINDS,
+  MemnestError,
+  scopeOf,
+  type ConversationTurn,
+  type ExtractionMode,
+  type InspectableJobQueue,
+  type JobEvent,
+  type MemoryStore,
+  type JobStatus,
+  type MemoryKind,
+  type Memnest,
+  type SearchResponse,
+} from '@memnest/core';
+import { formatResult, runEvals } from '@memnest/evals';
+import { PROVIDER_ENV_VARS, providersFromEnv } from '@memnest/providers';
+import { createPostgresStore, migrateDatabase } from '@memnest/store-postgres';
+import { createSqliteStore, migrateFile } from '@memnest/store-sqlite';
+import { seedMemories } from './seed';
+
+export interface CliIO {
+  out(text: string): void;
+  err(text: string): void;
+  env: Record<string, string | undefined>;
+  /** Stops long-running commands (`worker`). The real CLI uses SIGINT/SIGTERM. */
+  signal?: AbortSignal;
+}
+
+function describeJobEvent(event: JobEvent): string {
+  switch (event.type) {
+    case 'started':
+      return `→ ${event.job.id} ${event.job.type === 'extract' ? `extracting ${event.job.documentId}` : 'rebuilding the profile'} (attempt ${event.attempt})`;
+    case 'succeeded':
+      return `✓ ${event.job.id} done`;
+    case 'deferred':
+      return `… ${event.job.id} waiting for the session to go quiet until ${event.until}`;
+    case 'retrying':
+      return `↻ ${event.job.id} failed (attempt ${event.attempt}), retrying at ${event.at}: ${event.error}`;
+    case 'failed':
+      return `✗ ${event.job.id} failed permanently after ${event.attempt} attempt(s): ${event.error}`;
+    case 'error':
+      return `! queue error: ${event.error}`;
+  }
+}
+
+function waitForShutdown(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal) {
+      if (signal.aborted) return resolve();
+      signal.addEventListener('abort', () => resolve(), { once: true });
+      return;
+    }
+    const stop = () => {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+      resolve();
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  });
+}
+
+const processIO: CliIO = {
+  out: (text) => process.stdout.write(`${text}\n`),
+  err: (text) => process.stderr.write(`${text}\n`),
+  env: process.env,
+};
+
+export const USAGE = `memnest — context memory engine
+
+Usage: memnest <command> [options]
+
+Commands:
+  migrate                               Apply pending schema migrations
+  ingest <file...> --container <tag>    Add documents (.json conversation, .md, .txt)
+  search <query> --container <tag>      Recall memories and chunks, with the trace
+  memories list --container <tag>       List memories
+  memories add <content> --container   Write a memory directly, bypassing extraction
+  forget <memoryId> --container <tag>   Soft-delete a memory
+  lineage <memoryId> --container <tag>  Show a memory's lineage DAG
+  jobs --container <tag>                List extraction jobs (with --status)
+  jobs run                              Process every job that is due now, then exit
+  jobs retry <jobId> --container <tag>  Put a failed job back in the queue
+  worker                                Process extraction jobs until stopped
+  runs --container <tag>                Extraction runs with stats and rejected candidates
+  profile --container <tag>             The cached profile (--rebuild to build it now)
+  backfill --container <tag>            Embed memories and chunks that have no vectors yet
+  seed --container <tag> --count <n>    Write synthetic memories with structure
+  providers check                       Call the configured completion and embedding endpoints
+  providers env                         List the environment variables that configure providers
+  eval [--live] [--store <kind>]        Run the eval suite (scripted models, or --live with yours)
+
+Options:
+  --db <path>            SQLite database (default: $MEMNEST_DB or ./memnest.db)
+  --database-url <url>   Postgres instead of SQLite (default: $MEMNEST_DATABASE_URL); schema from $MEMNEST_PG_SCHEMA
+  --container <tag>      Container tag, e.g. user:123
+  --custom-id <id>       ingest: stable document identity
+  --extraction <mode>    ingest: batched | instant | none (default batched)
+  --date <iso>           ingest: when the content is about
+  --budget <tokens>      search: token budget (default 2000)
+  --candidates <n>       search: candidate pool per retriever (default 50)
+  --kind <kind>          memories: fact | preference | episode
+  --confidence <0..1>    memories add
+  --supersedes <id>      memories add: the memory this updates
+  --extends <id,id>      memories add: memories this enriches
+  --valid-until <iso>    memories add: expiry
+  --limit <n>            list limits
+  --all                  memories list: include superseded and forgotten
+  --rebuild              profile: build now instead of reading the cache
+  --status <status>      jobs: pending | running | succeeded | failed
+  --count <n>            seed: number of memories (default 1000)
+  --document <id>        runs: only runs that used this document
+  --live                 eval: use the configured model instead of scripted output
+  --store <kind>         eval: memory (default) | sqlite | postgres
+  --case <name>          eval: only cases whose name contains this
+  --json                 Machine-readable output
+  -h, --help             Show this help`;
+
+class UsageError extends Error {}
+
+const OPTIONS = {
+  db: { type: 'string' },
+  'database-url': { type: 'string' },
+  container: { type: 'string' },
+  'custom-id': { type: 'string' },
+  extraction: { type: 'string' },
+  date: { type: 'string' },
+  budget: { type: 'string' },
+  candidates: { type: 'string' },
+  kind: { type: 'string' },
+  confidence: { type: 'string' },
+  supersedes: { type: 'string' },
+  extends: { type: 'string' },
+  'valid-until': { type: 'string' },
+  limit: { type: 'string' },
+  all: { type: 'boolean' },
+  rebuild: { type: 'boolean' },
+  status: { type: 'string' },
+  count: { type: 'string' },
+  document: { type: 'string' },
+  live: { type: 'boolean' },
+  store: { type: 'string' },
+  case: { type: 'string' },
+  json: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+} as const;
+
+type Values = ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositionals: true }>>['values'];
+
+function int(value: string | undefined, name: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new UsageError(`--${name} must be a non-negative integer`);
+  return n;
+}
+
+function required(value: string | undefined, name: string): string {
+  if (!value) throw new UsageError(`--${name} is required`);
+  return value;
+}
+
+function readDocument(path: string): string | ConversationTurn[] {
+  const text = readFileSync(path, 'utf8');
+  if (extname(path).toLowerCase() !== '.json') return text;
+  const parsed: unknown = JSON.parse(text);
+  const turns = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { turns?: unknown; messages?: unknown }).turns ?? (parsed as { messages?: unknown }).messages;
+  if (!Array.isArray(turns)) throw new UsageError(`${path}: expected an array of {role, content} turns`);
+  return turns as ConversationTurn[];
+}
+
+const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+function formatSearch(response: SearchResponse): string {
+  const { memories, chunks, trace } = response;
+  const lines: string[] = [];
+  lines.push(`Memories (${memories.length})`);
+  memories.forEach((m, i) =>
+    lines.push(`  ${i + 1}. [${m.memory.kind}] ${m.memory.content}  (${m.memory.id}, ${m.tokens} tok)`),
+  );
+  lines.push(`Chunks (${chunks.length})`);
+  chunks.forEach((c, i) =>
+    lines.push(`  ${i + 1}. ${c.chunk.documentId}#${c.chunk.index}  ${truncate(c.chunk.content.replace(/\s+/g, ' '), 90)}  (${c.tokens} tok)`),
+  );
+  lines.push('');
+  lines.push(
+    `Trace  query="${trace.query}"${trace.degraded ? `  degraded=${trace.degraded}` : ''}  budget ${trace.budget.used}/${trace.budget.limit} tok  ${trace.timings.total ?? 0}ms`,
+  );
+  lines.push('  lex#  lexScore   fused      tok  status        memory');
+  for (const c of trace.candidates) {
+    const status = c.included ? 'included' : `✗ ${c.excludedReason}`;
+    lines.push(
+      `  ${String(c.lexicalRank ?? '-').padStart(4)}  ${(c.lexicalScore ?? 0).toFixed(4).padStart(8)}  ${c.rrfScore.toFixed(4).padStart(8)}  ${String(c.tokens).padStart(5)}  ${status.padEnd(12)}  ${c.memoryId}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+interface CheckResult {
+  kind: 'completion' | 'embeddings';
+  id: string;
+  ok: boolean;
+  ms: number;
+  detail: string;
+}
+
+async function checkProviders(io: CliIO, emit: (human: string, data: unknown) => void): Promise<number> {
+  const { completion, embedder, summary } = providersFromEnv(io.env);
+  const results: CheckResult[] = [];
+  const time = async (kind: CheckResult['kind'], id: string, fn: () => Promise<string>) => {
+    const started = performance.now();
+    try {
+      const detail = await fn();
+      results.push({ kind, id, ok: true, ms: Math.round(performance.now() - started), detail });
+    } catch (error) {
+      results.push({ kind, id, ok: false, ms: Math.round(performance.now() - started), detail: (error as Error).message });
+    }
+  };
+
+  if (completion) {
+    await time('completion', completion.id, async () => {
+      const response = await completion.complete({
+        system: 'You are a health check. Answer only with the requested JSON.',
+        messages: [{ role: 'user', content: 'Return {"ok": true}.' }],
+        jsonSchema: {
+          type: 'object',
+          properties: { ok: { type: 'boolean' } },
+          required: ['ok'],
+          additionalProperties: false,
+        },
+        schemaName: 'memnest_health_check',
+        maxTokens: 64,
+      });
+      if ((response.json as { ok?: unknown })?.ok !== true) {
+        throw new Error(`structured output did not match the schema: ${JSON.stringify(response.json)}`);
+      }
+      return `structured JSON ok (model ${response.model})`;
+    });
+  }
+  if (embedder) {
+    await time('embeddings', embedder.id, async () => {
+      const [vector] = await embedder.embed(['Memnest provider check']);
+      return `${vector!.length} dimensions`;
+    });
+  }
+
+  const lines = [...summary, ''];
+  for (const r of results) lines.push(`${r.ok ? '✓' : '✗'} ${r.kind.padEnd(10)} ${r.id}  ${r.ms}ms  ${r.detail}`);
+  if (results.length === 0) lines.push('Nothing to check. Run `memnest providers env` to see the settings.');
+  emit(lines.join('\n'), { summary, results });
+  return results.length > 0 && results.every((r) => r.ok) ? 0 : 1;
+}
+
+export async function run(argv: string[], io: CliIO = processIO): Promise<number> {
+  let parsed: { values: Values; positionals: string[] };
+  try {
+    parsed = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true, strict: true });
+  } catch (error) {
+    io.err(`error: ${(error as Error).message}\n\n${USAGE}`);
+    return 2;
+  }
+  const { values, positionals } = parsed;
+  const [command, ...rest] = positionals;
+  if (values.help || !command) {
+    io.out(USAGE);
+    return values.help ? 0 : 2;
+  }
+
+  const dbPath = values.db ?? io.env.MEMNEST_DB ?? 'memnest.db';
+  const emit = (human: string, data: unknown) => io.out(values.json ? JSON.stringify(data, null, 2) : human);
+
+  const databaseUrl = values['database-url'] ?? io.env.MEMNEST_DATABASE_URL;
+  const pgSchema = io.env.MEMNEST_PG_SCHEMA ?? 'memnest';
+  const target = databaseUrl ? `postgres schema ${pgSchema}` : dbPath;
+
+  let store: MemoryStore | undefined;
+  const open = async (
+    opts: { withCompletion?: boolean; onEvent?: (event: JobEvent) => void } = {},
+  ): Promise<{ memnest: Memnest; store: MemoryStore; queue: InspectableJobQueue }> => {
+    // Resolve providers before touching the database, so a bad configuration fails first.
+    const providers = providersFromEnv(io.env);
+    if (opts.withCompletion && !providers.completion) {
+      throw new UsageError('this command needs a completion provider; run `memnest providers env` to see the settings');
+    }
+    const queueOptions = opts.onEvent ? { onEvent: opts.onEvent } : {};
+    let queue: InspectableJobQueue;
+    if (databaseUrl) {
+      const pgStore = await createPostgresStore({ connectionString: databaseUrl, schema: pgSchema });
+      store = pgStore;
+      queue = pgStore.jobQueue(queueOptions);
+    } else {
+      const sqliteStore = createSqliteStore({ filename: dbPath });
+      store = sqliteStore;
+      queue = sqliteStore.jobQueue(queueOptions);
+    }
+    const memnest = createMemnest({
+      store,
+      queue,
+      ...(providers.completion ? { completion: providers.completion } : {}),
+      ...(providers.embedder ? { embedder: providers.embedder } : {}),
+    });
+    return { memnest, store, queue };
+  };
+
+  try {
+    switch (command) {
+      case 'migrate': {
+        let applied: Array<{ id: number; name: string }>;
+        let current: number;
+        if (databaseUrl) {
+          const result = await migrateDatabase(databaseUrl, pgSchema);
+          applied = result.applied;
+          current = result.status.current;
+        } else {
+          const result = migrateFile(dbPath);
+          applied = result.applied;
+          current = result.status.current;
+        }
+        const status = { current };
+        emit(
+          applied.length === 0
+            ? `Schema up to date at version ${status.current} (${target})`
+            : `Applied ${applied.map((m) => `${m.id}_${m.name}`).join(', ')}; schema at version ${status.current} (${target})`,
+          { applied: applied.map(({ id, name }) => ({ id, name })), version: status.current },
+        );
+        return 0;
+      }
+
+      case 'ingest': {
+        if (rest.length === 0) throw new UsageError('ingest needs at least one file');
+        const containerTag = required(values.container, 'container');
+        if (values['custom-id'] && rest.length > 1) throw new UsageError('--custom-id applies to a single file');
+        const { memnest } = await open();
+        const results = [];
+        for (const file of rest) {
+          const result = await memnest.add({
+            containerTag,
+            content: readDocument(file),
+            ...(values['custom-id'] ? { customId: values['custom-id'] } : {}),
+            ...(values.extraction ? { extraction: values.extraction as ExtractionMode } : {}),
+            ...(values.date ? { documentDate: values.date } : {}),
+            metadata: { source: file },
+          });
+          results.push({ file, ...result });
+        }
+        emit(
+          results
+            .map(
+              (r) =>
+                `${r.file}: ${r.deduplicated ? 'unchanged' : r.status} ${r.documentId} v${r.version}` +
+                (r.jobId ? ` (extraction job ${r.jobId} queued)` : ''),
+            )
+            .join('\n'),
+          results,
+        );
+        return 0;
+      }
+
+      case 'search': {
+        const query = rest.join(' ');
+        if (!query) throw new UsageError('search needs a query');
+        const scope = scopeOf(required(values.container, 'container'));
+        const { memnest } = await open();
+        const response = await memnest.search(query, scope, {
+          tokenBudget: int(values.budget, 'budget', 2000),
+          candidates: int(values.candidates, 'candidates', 50),
+        });
+        emit(formatSearch(response), response);
+        return 0;
+      }
+
+      case 'memories': {
+        const [sub, ...args] = rest;
+        const containerTag = required(values.container, 'container');
+        const { memnest } = await open();
+        if (sub === 'list') {
+          const kind = values.kind as MemoryKind | undefined;
+          const memories = await memnest.listMemories(
+            scopeOf(containerTag),
+            { limit: int(values.limit, 'limit', 100) },
+            { ...(kind ? { kind } : {}), latestOnly: !values.all, includeForgotten: !!values.all },
+          );
+          emit(
+            memories
+              .map(
+                (m) =>
+                  `${m.id}  [${m.kind}] v${m.version}${m.isLatest ? '' : ' superseded'}${m.forgottenAt ? ' forgotten' : ''}  ${m.content}`,
+              )
+              .join('\n') || '(no memories)',
+            memories,
+          );
+          return 0;
+        }
+        if (sub === 'add') {
+          const content = args.join(' ');
+          if (!content) throw new UsageError('memories add needs content');
+          if (values.kind && !MEMORY_KINDS.includes(values.kind as MemoryKind)) {
+            throw new UsageError(`--kind must be one of ${MEMORY_KINDS.join(', ')}`);
+          }
+          const [memory] = await memnest.addMemories({
+            containerTag,
+            memories: [
+              {
+                content,
+                ...(values.kind ? { kind: values.kind as MemoryKind } : {}),
+                ...(values.confidence ? { confidence: Number(values.confidence) } : {}),
+                ...(values.supersedes ? { supersedes: values.supersedes } : {}),
+                ...(values.extends ? { extendsIds: values.extends.split(',').filter(Boolean) } : {}),
+                ...(values['valid-until'] ? { validUntil: values['valid-until'] } : {}),
+              },
+            ],
+          });
+          emit(`${memory!.id}  [${memory!.kind}] v${memory!.version}  ${memory!.content}`, memory);
+          return 0;
+        }
+        throw new UsageError('memories needs a subcommand: list | add');
+      }
+
+      case 'forget': {
+        const [memoryId] = rest;
+        if (!memoryId) throw new UsageError('forget needs a memory id');
+        const { memnest } = await open();
+        const memory = await memnest.forget(scopeOf(required(values.container, 'container')), memoryId);
+        emit(`Forgot ${memory.id} at ${memory.forgottenAt}`, memory);
+        return 0;
+      }
+
+      case 'lineage': {
+        const [memoryId] = rest;
+        if (!memoryId) throw new UsageError('lineage needs a memory id');
+        const { memnest } = await open();
+        const lineage = await memnest.getLineage(scopeOf(required(values.container, 'container')), memoryId);
+        if (!lineage) {
+          io.err(`error: memory ${memoryId} not found`);
+          return 1;
+        }
+        const byId = new Map(lineage.memories.map((m) => [m.id, m]));
+        const lines = lineage.memories.map(
+          (m) => `${m.id === lineage.rootId ? '*' : ' '} ${m.id}  v${m.version}${m.isLatest ? '' : ' (superseded)'}${m.forgottenAt ? ' (forgotten)' : ''}  ${m.content}`,
+        );
+        lines.push('', 'Edges');
+        for (const e of lineage.edges) {
+          const target = byId.get(e.to)?.content ?? e.to;
+          lines.push(`  ${e.from} ${e.relation === 'source' ? '← from document' : e.relation} ${e.relation === 'source' ? e.to : `→ ${truncate(target, 60)}`}`);
+        }
+        emit(lines.join('\n'), lineage);
+        return 0;
+      }
+
+      case 'jobs': {
+        const [sub = 'list', jobId] = rest;
+        if (sub === 'run') {
+          const { memnest } = await open({ withCompletion: true, onEvent: (event) => io.err(describeJobEvent(event)) });
+          const summary = await memnest.processDueJobs();
+          emit(
+            `Processed ${summary.processed}: ${summary.succeeded} succeeded, ${summary.deferred} deferred, ${summary.retried} will retry, ${summary.failed} failed`,
+            summary,
+          );
+          return summary.failed > 0 ? 1 : 0;
+        }
+        const scope = scopeOf(required(values.container, 'container'));
+        const { queue: jobQueue } = await open();
+        if (sub === 'retry') {
+          if (!jobId) throw new UsageError('jobs retry needs a job id');
+          await jobQueue.retry(scope, jobId);
+          emit(`Job ${jobId} is pending again; run \`memnest jobs run\` or \`memnest worker\``, { jobId, status: 'pending' });
+          return 0;
+        }
+        if (sub !== 'list') throw new UsageError('jobs subcommands: list | run | retry <jobId>');
+        const jobs = await jobQueue.list(scope, {
+          ...(values.status ? { status: values.status as JobStatus } : {}),
+          limit: int(values.limit, 'limit', 100),
+        });
+        emit(
+          jobs
+            .map(
+              (j) =>
+                `${j.job.id}  ${j.status.padEnd(9)} attempts=${j.attempts}/${j.maxAttempts}  ${j.job.type === 'extract' ? `${j.job.mode} ${j.job.documentId}` : 'profile rebuild'}  runAt=${j.runAt}` +
+                (j.lastError ? `\n    last error: ${j.lastError}` : ''),
+            )
+            .join('\n') || '(no jobs)',
+          jobs,
+        );
+        return 0;
+      }
+
+      case 'worker': {
+        const { memnest } = await open({ withCompletion: true, onEvent: (event) => io.err(describeJobEvent(event)) });
+        memnest.startWorker();
+        io.err(`Worker running on ${target}. Ctrl+C to stop.`);
+        await waitForShutdown(io.signal);
+        io.err('Stopping: waiting for the job in flight…');
+        await memnest.close();
+        store = undefined;
+        return 0;
+      }
+
+      case 'runs': {
+        const scope = scopeOf(required(values.container, 'container'));
+        const { memnest } = await open();
+        const runs = await memnest.listExtractionRuns(scope, {
+          limit: int(values.limit, 'limit', 20),
+          ...(values.document ? { documentId: values.document } : {}),
+        });
+        const lines = runs.map((r) => {
+          const s = r.stats;
+          const head = `${r.id}  ${r.status.padEnd(9)} ${r.method} ${r.model ?? ''}  ${r.startedAt}  docs=${r.documentIds.join(',')}`;
+          const body = s
+            ? `    ${s.calls} extraction + ${s.resolutionCalls ?? 0} resolution call(s): ${s.candidates} candidates → ${s.accepted} accepted ` +
+              `(${s.created} new, ${s.updated} updates, ${s.extended} extends, ${s.reinforced} reinforced), ${s.rejected.length} rejected`
+            : '';
+          const decisions = (s?.decisions ?? []).map(
+            (d) =>
+              `      ${d.relation.padEnd(9)} ${d.content}` +
+              (d.memoryId ? `\n                → ${d.memoryId}` : '') +
+              ` [${d.via}]` +
+              (d.reason ? ` ${d.reason}` : ''),
+          );
+          const rejected = (s?.rejected ?? []).map((x) => `      ✗ ${x.reason.padEnd(18)} ${x.content}`);
+          return [head, body, ...decisions, ...rejected, ...(r.error ? [`    error: ${r.error}`] : [])].filter(Boolean).join('\n');
+        });
+        emit(lines.join('\n') || '(no extraction runs)', runs);
+        return 0;
+      }
+
+      case 'profile': {
+        const scope = scopeOf(required(values.container, 'container'));
+        const { memnest } = await open();
+        const profile = values.rebuild ? await memnest.rebuildProfile(scope) : await memnest.profile(scope);
+        const header = profile.builtAt
+          ? `Profile for ${scope.containerTag}: ${profile.builder} build at ${profile.builtAt}, ${profile.memoryCount} memories, ${profile.tokens} tokens${profile.stale ? ' (rebuild pending)' : ''}`
+          : `No profile for ${scope.containerTag} yet${profile.stale ? '; a rebuild is queued (run \`memnest jobs run\`, or --rebuild)' : ''}`;
+        emit([header, '', profile.text || '(empty)'].join('\n'), profile);
+        return 0;
+      }
+
+      case 'backfill': {
+        const scope = scopeOf(required(values.container, 'container'));
+        const { memnest } = await open();
+        const counts = await memnest.backfillEmbeddings(scope);
+        emit(`Embedded ${counts.memories} memories and ${counts.chunks} chunks in ${scope.containerTag}`, counts);
+        return 0;
+      }
+
+      case 'seed': {
+        const containerTag = required(values.container, 'container');
+        const count = int(values.count, 'count', 1000);
+        const { memnest } = await open();
+        const started = Date.now();
+        const memories = await seedMemories(memnest, { containerTag, count });
+        emit(`Seeded ${memories.length} memories into ${containerTag} in ${Date.now() - started}ms`, {
+          containerTag,
+          count: memories.length,
+        });
+        return 0;
+      }
+
+      case 'providers': {
+        const [sub] = rest;
+        if (sub === 'env') {
+          emit(
+            Object.entries(PROVIDER_ENV_VARS)
+              .map(([name, doc]) => `${name.padEnd(28)} ${doc}`)
+              .join('\n'),
+            PROVIDER_ENV_VARS,
+          );
+          return 0;
+        }
+        if (sub !== 'check') throw new UsageError('providers needs a subcommand: check | env');
+        return await checkProviders(io, emit);
+      }
+
+      case 'eval': {
+        const storeKind = values.store ?? 'memory';
+        if (storeKind !== 'memory' && storeKind !== 'sqlite' && storeKind !== 'postgres') {
+          throw new UsageError('--store must be memory, sqlite or postgres');
+        }
+        if (storeKind === 'postgres' && !databaseUrl) throw new UsageError('--store postgres needs --database-url or MEMNEST_DATABASE_URL');
+        let completion;
+        let embedder;
+        if (values.live) {
+          ({ completion, embedder } = providersFromEnv(io.env));
+          if (!completion) {
+            throw new UsageError('--live needs a completion provider; run `memnest providers env` to see the settings');
+          }
+        }
+        const report = await runEvals({
+          mode: values.live ? 'live' : 'mock',
+          store: storeKind,
+          ...(databaseUrl ? { databaseUrl } : {}),
+          ...(completion ? { completion } : {}),
+          ...(embedder ? { embedder } : {}),
+          ...(values.case ? { filter: values.case } : {}),
+          ...(values.json ? {} : { onResult: (result) => io.err(formatResult(result)) }),
+        });
+        if (values.json) io.out(JSON.stringify(report, null, 2));
+        else io.out(`\n${report.passed} passed, ${report.failed} failed, ${report.pending} pending, ${report.skipped} skipped (${report.mode}, ${report.store} store${report.model ? `, ${report.model}` : ''})`);
+        return report.failed > 0 ? 1 : 0;
+      }
+
+      default:
+        throw new UsageError(`unknown command "${command}"`);
+    }
+  } catch (error) {
+    if (error instanceof UsageError) {
+      io.err(`error: ${error.message}\n\nRun \`memnest --help\` for usage.`);
+      return 2;
+    }
+    if (error instanceof MemnestError) {
+      io.err(`error [${error.code}]: ${error.message}`);
+      return 1;
+    }
+    throw error;
+  } finally {
+    await store?.close();
+  }
+}

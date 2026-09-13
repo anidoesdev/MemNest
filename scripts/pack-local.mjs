@@ -60,6 +60,9 @@ import { run } from '@memnest/cli';
 import { EVAL_CASES, runEvals } from '@memnest/evals';
 import { createPostgresStore, PG_MIGRATIONS } from '@memnest/store-postgres';
 import { ollamaCompletion, openAICompatibleEmbeddings, providersFromEnv } from '@memnest/providers';
+import { createServer, ROUTES } from '@memnest/server';
+import { createMemnestClient, MemnestHttpError } from '@memnest/client';
+import { createInMemoryAuthStore } from '@memnest/core';
 
 if (ollamaCompletion({ model: 'm' }).id !== 'ollama:m' || openAICompatibleEmbeddings({ baseURL: 'http://x', model: 'e', dimensions: 3 }).dimensions !== 3) throw new Error('ESM smoke: providers');
 if (providersFromEnv({}).completion) throw new Error('ESM smoke: providersFromEnv');
@@ -74,6 +77,16 @@ for (const store of [createInMemoryStore(), createSqliteStore({ autoMigrate: tru
   await memnest.close();
 }
 if (typeof run !== 'function') throw new Error('ESM smoke: cli export missing');
+{
+  const server = createServer({ memnest: createMemnest({ store: createInMemoryStore() }), auth: createInMemoryAuthStore() });
+  const { key } = await server.keyring.issue({ name: 'smoke', containerTag: 'user:123' });
+  const client = createMemnestClient({ baseUrl: 'http://smoke.test', apiKey: key, fetch: async (input, init) => server.app.request(input, init) });
+  await client.addMemories({ containerTag: 'user:123', memories: [{ content: 'The user prefers Postgres.' }] });
+  const found = await client.searchMemories('Postgres', scope);
+  if (found.length !== 1 || !ROUTES.search) throw new Error('ESM smoke: server + client round trip');
+  const denied = await client.listMemories(scopeOf('user:other')).catch((e) => e);
+  if (!(denied instanceof MemnestHttpError) || denied.code !== 'scope_violation') throw new Error('ESM smoke: scoped key');
+}
 if (typeof createPostgresStore !== 'function' || !PG_MIGRATIONS.length) throw new Error('ESM smoke: store-postgres exports');
 const evalReport = await runEvals({ mode: 'mock', filter: 'real-transcript' });
 if (evalReport.passed !== 1 || !EVAL_CASES.length) throw new Error('ESM smoke: evals');
@@ -89,6 +102,9 @@ const { createSqliteStore, MIGRATIONS } = require('@memnest/store-sqlite');
 const { run } = require('@memnest/cli');
 const { ollamaEmbeddings } = require('@memnest/providers');
 const { createPostgresStore } = require('@memnest/store-postgres');
+const { createServer, createKeyring } = require('@memnest/server');
+const { createMemnestClient } = require('@memnest/client');
+if (typeof createServer !== 'function' || typeof createKeyring !== 'function' || typeof createMemnestClient !== 'function') throw new Error('CJS smoke: server/client');
 if (typeof createPostgresStore !== 'function') throw new Error('CJS smoke: store-postgres');
 if (ollamaEmbeddings({ model: 'nomic-embed-text' }).dimensions !== 768) throw new Error('CJS smoke: providers');
 (async () => {
@@ -112,6 +128,14 @@ import { createSqliteStore, type SqliteStore } from '@memnest/store-sqlite';
 import { run } from '@memnest/cli';
 import { openAICompatibleCompletion, type ConfiguredProviders } from '@memnest/providers';
 import { createPostgresStore, type PostgresStore } from '@memnest/store-postgres';
+import { createServer, type MemnestServer, type RouteId } from '@memnest/server';
+import { createMemnestClient, type MemnestClient } from '@memnest/client';
+import { createInMemoryAuthStore, type MemnestApi } from '@memnest/core';
+const server: MemnestServer = createServer({ memnest: createMemnest({ store: createInMemoryStore() }), auth: createInMemoryAuthStore() });
+const route: RouteId = 'search';
+const client: MemnestClient = createMemnestClient({ baseUrl: 'http://localhost:8787', apiKey: 'mnk_x' });
+// D2: embedded and remote are interchangeable where the API is expected.
+const apis: MemnestApi[] = [client, createMemnest({ store: createInMemoryStore() })];
 const pgStore: Promise<PostgresStore> = createPostgresStore({ connectionString: 'postgres://localhost/none' });
 
 const configured: ConfiguredProviders = { summary: [], completion: openAICompatibleCompletion({ model: 'm', baseURL: 'http://x' }) };
@@ -120,7 +144,7 @@ const memnest: Memnest = createMemnest({ store });
 const response: Promise<SearchResponse> = memnest.search('q', scopeOf('user:1'));
 const memories: Promise<Memory[]> = memnest.listMemories(scopeOf('user:1'));
 const pragma: unknown = store.db.pragma('journal_mode');
-export { createInMemoryStore, run, response, memories, pragma, configured, pgStore };
+export { createInMemoryStore, run, response, memories, pragma, configured, pgStore, server, route, apis };
 `,
 );
 
@@ -148,6 +172,8 @@ for (const resolution of ['node16', 'bundler']) {
 sh('npm exec -- memnest migrate --db smoke.db', consumer);
 sh('npm exec -- memnest seed --container user:smoke --count 50 --db smoke.db', consumer);
 sh('npm exec -- memnest search "Stripe Postgres" --container user:smoke --budget 120 --db smoke.db', consumer);
+sh('npm exec -- memnest keys create --name smoke --container user:smoke --db smoke.db', consumer);
+sh('npm exec -- memnest keys list --db smoke.db', consumer);
 sh('npm exec -- memnest eval --store sqlite', consumer);
 
 console.log('\npack:local passed: tarballs install and every entry point works outside the workspace.');

@@ -15,10 +15,11 @@ Memnest is where an agent's memories live. Nothing is thrown out: when a fact is
 | 2 | Extraction: prompt, schema, job queue, grouping | ✅ with scripted models. Not yet run against a live model |
 | 3 | Resolution: updates / extends / duplicate, versioning | ✅ with scripted models. Not yet run against a live model |
 | 4 | Postgres + pgvector, hybrid recall, RRF, trace, budget packing | ✅ Precision-at-scale passes on every store. Semantic recall not yet run against a live embedding model |
-| 5 | Profiles, forget, expiry, container delete. Public API complete, `0.1.0` | ✅ Versioned `0.1.0`. Not yet tagged or published |
-| 6–9 | Server, UI, Runnel | Not started |
+| 5 | Profiles, forget, expiry, container delete. Public API complete, `0.1.0` | ✅ Published to npm (`0.1.0`, providers `0.1.1`) |
+| 6 | Server, auth, scoped keys, leakage suite | ✅ Leakage and secrets suites cover every endpoint on the in-memory, SQLite and Postgres stores |
+| 7–9 | UI, Runnel | Not started |
 
-Nothing in the public API is stubbed. Every milestone through M5 is implemented and tested on the in-memory, SQLite and Postgres stores.
+Nothing in the public API is stubbed. Every milestone through M6 is implemented and tested on the in-memory, SQLite and Postgres stores.
 
 ## Recall
 
@@ -150,6 +151,38 @@ memnest eval --store postgres --database-url $MEMNEST_DATABASE_URL
 MEMNEST_PROVIDER=ollama MEMNEST_COMPLETION_MODEL=llama3.1:8b memnest eval --live
 ```
 
+## Server
+
+```sh
+docker compose up -d                                         # Postgres + pgvector and the server on :8787
+docker compose exec server memnest keys create --name admin  # prints the key once
+```
+
+Or without Docker: `memnest migrate && memnest keys create --name admin && memnest serve`.
+
+```sh
+KEY=mnk_...
+curl -X POST localhost:8787/v1/memories -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","memories":[{"content":"The user prefers Postgres over MongoDB."}]}'
+curl -X POST localhost:8787/v1/search -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","query":"what database does this user use?","options":{"tokenBudget":200}}'
+```
+
+- **API.** REST for documents, search (with the trace), profiles, memories, lineage, forget, graph snapshots, container delete and extraction runs. SSE at `/v1/events` streams job status. Full list: [packages/server](packages/server/README.md).
+- **Keys.** Only argon2id hashes are stored. A key made with `--container` can only reach that container. Middleware injects the scope; handlers never read a container tag from the request.
+- **Sessions.** The dashboard exchanges a key for an `HttpOnly`, `SameSite=Strict` cookie. Revoking the key ends its sessions.
+- **Worker.** `memnest serve` also runs the extraction worker when a completion provider is configured (`MEMNEST_WORKER=auto|on|off`). SSE streams the jobs that worker processes.
+- **Leakage.** The suite calls every route with a key scoped to one container, and again with a session from that key. Each call tries to reach another container through the path, query, body and ids. Probes are keyed by the route table, so a new route without one fails typecheck.
+
+`@memnest/client` implements the same `MemnestApi` as the engine:
+
+```ts
+import { createMemnestClient } from '@memnest/client';
+
+const memnest = createMemnestClient({ baseUrl: 'http://localhost:8787', apiKey: process.env.MEMNEST_KEY });
+const { memories, trace } = await memnest.search('what database does this user use?', scopeOf('user:123'), { tokenBudget: 200 });
+```
+
 ## Try it
 
 ```sh
@@ -177,10 +210,11 @@ await memnest.add({ containerTag: 'user:123', content: [{ role: 'user', content:
 const { memories, chunks, trace } = await memnest.search('database', scopeOf('user:123'), { tokenBudget: 200 });
 ```
 
-## API (0.1.0)
+## API
 
 ```ts
-interface Memnest {
+// Implemented by the embedded engine and by @memnest/client (D2).
+interface MemnestApi {
   add(input: AddInput): Promise<AddResult>;                       // returns at 'indexed'; extraction runs later
   getDocument(scope, id): Promise<DocumentWithChunks | null>;
   deleteDocument(scope, id): Promise<void>;                        // tombstone: content and chunks erased
@@ -198,17 +232,21 @@ interface Memnest {
 
   profile(scope): Promise<Profile>;
   rebuildProfile(scope): Promise<Profile>;
-  backfillEmbeddings(scope, opts?): Promise<{ memories: number; chunks: number }>;
   deleteContainer(scope): Promise<void>;                           // hard delete (D6)
 
   listExtractionRuns(scope, opts?): Promise<ExtractionRun[]>;
+  close(): Promise<void>;
+}
+
+// The embedded engine adds what only the process owning the store and queue can do.
+interface Memnest extends MemnestApi {
+  backfillEmbeddings(scope, opts?): Promise<{ memories: number; chunks: number }>;
   startWorker(): void;
   processDueJobs(): Promise<JobRunSummary>;
-  close(): Promise<void>;
 }
 ```
 
-Every method is scoped: build scopes with `scopeOf(containerTag)`. Errors are `MemnestError`s with a `code` (`validation`, `not_found`, `scope_violation`, `provenance`, `configuration`, `provider`, …). The API stays `0.x` until it stops moving: breaking changes bump the minor version.
+Every method is scoped: build scopes with `scopeOf(containerTag)`. Errors are `MemnestError`s with a `code` (`validation`, `not_found`, `scope_violation`, `provenance`, `configuration`, `provider`, `unauthorized`, …). The API stays `0.x` until it stops moving: breaking changes bump the minor version.
 
 ## Model providers
 
@@ -248,15 +286,18 @@ Prefer Ollama's native adapter over its `/v1` route: it enforces the JSON schema
 | `@memnest/store-sqlite` | better-sqlite3 + FTS5. `capabilities().vector === false`. Ships migrations and a durable `memnest_jobs` queue. |
 | `@memnest/providers` | Ollama (native API, schema-constrained output), any OpenAI-compatible endpoint, Voyage embeddings. Timeouts, retries with backoff, dimension checks. |
 | `@memnest/evals` | The eval harness and cases: scripted models for CI, `--live` for real ones. |
-| `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval` |
+| `@memnest/server` | Hono REST + SSE. argon2id API keys, container-scoped keys, dashboard sessions. |
+| `@memnest/client` | `MemnestApi` over HTTP, for Node, browsers and workers. |
+| `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve` |
 | `@memnest/store-contract` | Private. The behavioural suite every store must pass. |
 
 ## Guarantees and how they are tested
 
 - **Core does no I/O.** Core typechecks with `types: []`, so no Node or DOM globals are available, and `test/architecture.test.ts` fails on any non-relative import or I/O global.
+- **A container tag is a hard boundary, over HTTP too.** Every server route is probed with a key, and with a session, scoped to another container (`packages/server/test/leakage.test.ts`), on every store. Every authenticated route refuses calls without credentials.
 - **A container tag is a hard boundary.** Every `MemoryStore` method takes a `Scope`. The contract suite has one leakage probe per store method, keyed by `keyof MemoryStoreOps`, so adding a method without a probe fails typecheck. Each probe asserts that nothing from the other container is returned or modified, including attempts to re-home another container's row ids.
 - **Provenance is not optional.** Stores reject memories with no source document or extraction run. Direct writes create a `direct` source document and run, and a test walks every memory back to its sources.
-- **Secrets never reach storage.** Redaction runs before hashing, chunking or persistence. The secrets test ingests credential fixtures and greps the raw SQLite file, WAL and SHM. `secure_delete` is on, so tombstoned documents and deleted containers leave no residue on disk (also tested).
+- **Secrets never reach storage.** Credentials sent through the API, issued API keys and session tokens are absent from the database files (`packages/server/test/secrets.test.ts`). Redaction runs before hashing, chunking or persistence. The secrets test ingests credential fixtures and greps the raw SQLite file, WAL and SHM. `secure_delete` is on, so tombstoned documents and deleted containers leave no residue on disk (also tested).
 - **Partial graphs are never written.** Writes run in a transaction, and a store without transactions refuses to write.
 
 ## Development
@@ -269,7 +310,7 @@ pnpm lint:pkg     # publint + attw
 pnpm pack:local   # pack tarballs, install into a throwaway consumer, smoke-test ESM/CJS/TS/bin
 ```
 
-CI (`.github/workflows/ci.yml`) runs typecheck → test → build → publint → attw, a separate required **security** job (leakage + secrets), `pack:local` on Node 20/22 and Windows, and publishes on `v*` tags.
+CI (`.github/workflows/ci.yml`) runs typecheck → test → build → publint → attw, a separate required **security** job (store and server leakage + secrets, Postgres included), `pack:local` on Node 20/22 and Windows, and publishes on `v*` tags.
 
 ## Decisions made while building
 
@@ -298,7 +339,16 @@ These interpret the build prompt where it was silent or in tension with itself:
 21. **Memories written before an embedder was configured have no vectors** until `backfillEmbeddings(scope)` or `memnest backfill` runs. Until then they stay lexically searchable and show no `vectorRank` in the trace.
 22. **Profiles are invalidated eagerly and rebuilt lazily.** The prompt asks for a cached read that is never rebuilt on every write. But a forget (D5) must stop a fact being served, and a cached profile would otherwise keep repeating it until the next rebuild. So forget and supersede prune the items that cite those memories right away, and the rebuild waits for the threshold.
 23. **Profile rebuilds run as queued jobs when they need the model, and inline when they don't.** A write with a completion provider never waits on a model call. A deployment without one still gets profiles, built deterministically inline once the rebuild is due.
-24. **`0.1.0` is versioned but not published.** `changeset version` bumped the six public packages and wrote their changelogs. Tagging and `npm publish` wait for the `@memnest` npm org, an npm login and a git remote.
+24. **`0.1.0` was published from a local machine,** before the CI publish job existed, so it carries no provenance. `@memnest/providers` `0.1.1` and later releases publish from CI with provenance.
+25. **D2 covers the application API, not the operational one.** `MemnestApi` is what both the engine and `@memnest/client` implement. `startWorker`, `processDueJobs` and `backfillEmbeddings` stay on the embedded `Memnest`: they run where the store and queue live. A client that threw on them would satisfy the type but fail at runtime.
+26. **The server has endpoints the prompt's list lacks.** `GET /v1/memories/:id`, `POST /v1/profile/:tag/rebuild` and `GET /v1/runs` let the client implement `MemnestApi` fully. `GET/POST/DELETE /v1/session` issue and end the dashboard cookie. `/healthz` serves container health checks. `POST /v1/search` takes `include`, so `searchMemories` doesn't also run chunk retrieval.
+27. **Credentials live behind their own `AuthStore` port, not `MemoryStore`.** Keys and sessions are not container data, so hard rule 4's scoping doesn't apply to them, and `deleteContainer` leaves keys scoped to that container alone. Stores ship `authStore()` on their own tables (SQLite migration 5, Postgres migration 3).
+28. **Every request reads the key; only the argon2 check is cached.** argon2id is deliberately slow, so a key already verified against its stored hash isn't hashed again, but revocation still takes effect on the next request. `lastUsedAt` is written at most once a minute per key.
+29. **A scoped key may delete its own container.** The prompt's key model has scope but no permissions, and deleting your own container is the GDPR path D6 exists for. Per-key permissions can narrow this later.
+30. **A scope mismatch is `403 scope_violation`; a missing row is `404`.** The 403 follows from the caller's own request, so it reveals nothing about the other container. Another container's ids behave exactly like ids that don't exist.
+31. **SSE streams events from the worker in the server's process.** Queue events are in-process callbacks. A worker running elsewhere (`memnest worker`) still processes jobs, but the server doesn't see its events. Postgres `LISTEN/NOTIFY` can close this later. Queue-level errors carry no container, so they are never streamed.
+32. **Cookie-authenticated writes need an `x-memnest-csrf` header.** `SameSite=Strict` already keeps cookies off cross-site requests in current browsers. The header is a second guard that doesn't depend on the browser, because a cross-site form cannot set it. There is no CORS: serve the dashboard from the server's origin.
+33. **`memnest serve` lives in the CLI, not a separate binary.** The CLI already builds stores and providers from the environment, and the server package stays free of store and provider dependencies. The Docker image installs the packed tarballs and runs `memnest migrate && memnest serve`.
 
 ## License
 

@@ -185,6 +185,31 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 5,
+    name: 'api_keys_and_sessions',
+    sql: /* sql */ `
+      -- Server credentials. Only argon2id hashes of key secrets and SHA-256 hashes of session tokens are stored.
+      CREATE TABLE memnest_api_keys (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        secret_hash   TEXT NOT NULL,
+        container_tag TEXT,
+        created_at    TEXT NOT NULL,
+        last_used_at  TEXT,
+        revoked_at    TEXT
+      );
+
+      CREATE TABLE memnest_sessions (
+        id         TEXT PRIMARY KEY,
+        key_id     TEXT NOT NULL REFERENCES memnest_api_keys(id),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+      CREATE INDEX memnest_sessions_key ON memnest_sessions (key_id);
+      CREATE INDEX memnest_sessions_expires ON memnest_sessions (expires_at);
+    `,
+  },
 ];
 
 const LEDGER = /* sql */ `

@@ -149,6 +149,31 @@ export const PG_MIGRATIONS: readonly PgMigration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: 'api_keys_and_sessions',
+    sql: (s) => /* sql */ `
+      -- Server credentials. Only argon2id hashes of key secrets and SHA-256 hashes of session tokens are stored.
+      CREATE TABLE ${s}.api_keys (
+        id            text PRIMARY KEY,
+        name          text NOT NULL,
+        secret_hash   text NOT NULL,
+        container_tag text,
+        created_at    timestamptz NOT NULL,
+        last_used_at  timestamptz,
+        revoked_at    timestamptz
+      );
+
+      CREATE TABLE ${s}.sessions (
+        id         text PRIMARY KEY,
+        key_id     text NOT NULL REFERENCES ${s}.api_keys (id),
+        created_at timestamptz NOT NULL,
+        expires_at timestamptz NOT NULL
+      );
+      CREATE INDEX sessions_key ON ${s}.sessions (key_id);
+      CREATE INDEX sessions_expires ON ${s}.sessions (expires_at);
+    `,
+  },
 ];
 
 const SCHEMA_NAME = /^[a-z_][a-z0-9_]{0,62}$/;

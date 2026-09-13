@@ -11,6 +11,8 @@ import {
   queryTerms,
   systemClock,
   traverseLineage,
+  type ApiKeyRecord,
+  type AuthStore,
   type Chunk,
   type Clock,
   type ContainerRecord,
@@ -60,6 +62,8 @@ export interface PostgresStore extends MemoryStore {
   readonly schema: string;
   /** A queue on the jobs table. Claims use FOR UPDATE SKIP LOCKED, so many workers can share it. */
   jobQueue(options?: Omit<JobQueueOptions, 'clock'>): PostgresJobQueue;
+  /** Server credentials on the `api_keys` and `sessions` tables of this store's schema. */
+  authStore(): AuthStore;
 }
 
 interface Queryable {
@@ -835,10 +839,69 @@ export async function createPostgresStore(options: PostgresStoreOptions): Promis
   let queue: PostgresJobQueue | undefined;
   let closed = false;
 
+  const toApiKey = (r: Row): ApiKeyRecord => ({
+    id: r.id,
+    name: r.name,
+    secretHash: r.secret_hash,
+    ...(r.container_tag !== null ? { containerTag: r.container_tag } : {}),
+    createdAt: iso(r.created_at),
+    ...(r.last_used_at !== null ? { lastUsedAt: iso(r.last_used_at) } : {}),
+    ...(r.revoked_at !== null ? { revokedAt: iso(r.revoked_at) } : {}),
+  });
+
+  const auth: AuthStore = {
+    async putApiKey(key) {
+      const result = await pool.query(
+        `INSERT INTO ${S}.api_keys (id, name, secret_hash, container_tag, created_at, last_used_at, revoked_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+        [key.id, key.name, key.secretHash, key.containerTag ?? null, key.createdAt, key.lastUsedAt ?? null, key.revokedAt ?? null],
+      );
+      if (result.rowCount === 0) throw new ValidationError(`API key ${key.id} already exists`);
+    },
+    async getApiKey(id) {
+      const { rows } = await pool.query(`SELECT * FROM ${S}.api_keys WHERE id = $1`, [id]);
+      return rows[0] ? toApiKey(rows[0]) : null;
+    },
+    async listApiKeys() {
+      const { rows } = await pool.query(`SELECT * FROM ${S}.api_keys ORDER BY created_at, id`);
+      return rows.map(toApiKey);
+    },
+    revokeApiKey: (id, at) =>
+      inTransaction(async (client) => {
+        const result = await client.query(`UPDATE ${S}.api_keys SET revoked_at = $1 WHERE id = $2 AND revoked_at IS NULL`, [at, id]);
+        if (result.rowCount === 0) return false;
+        await client.query(`DELETE FROM ${S}.sessions WHERE key_id = $1`, [id]);
+        return true;
+      }),
+    async touchApiKey(id, at) {
+      await pool.query(`UPDATE ${S}.api_keys SET last_used_at = $1 WHERE id = $2`, [at, id]);
+    },
+    async putSession(session) {
+      await pool.query(`INSERT INTO ${S}.sessions (id, key_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`, [
+        session.id,
+        session.keyId,
+        session.createdAt,
+        session.expiresAt,
+      ]);
+    },
+    async getSession(id) {
+      const { rows } = await pool.query(`SELECT id, key_id, created_at, expires_at FROM ${S}.sessions WHERE id = $1`, [id]);
+      const row = rows[0];
+      return row ? { id: row.id, keyId: row.key_id, createdAt: iso(row.created_at), expiresAt: iso(row.expires_at) } : null;
+    },
+    async deleteSession(id) {
+      await pool.query(`DELETE FROM ${S}.sessions WHERE id = $1`, [id]);
+    },
+    async deleteExpiredSessions(now) {
+      return (await pool.query(`DELETE FROM ${S}.sessions WHERE expires_at <= $1`, [now])).rowCount ?? 0;
+    },
+  };
+
   return {
     ...poolOps,
     pool,
     schema,
+    authStore: () => auth,
     capabilities: () => ({ ...capabilities }),
     transaction: (fn) =>
       inTransaction((client) =>

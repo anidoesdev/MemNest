@@ -61,12 +61,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@memnest/store-sqlite... --filter=@memnest/store-postgres...
-      - name: Leakage and secrets, every store
+      - run: pnpm turbo run build --filter=@memnest/store-sqlite... --filter=@memnest/store-postgres... --filter=@memnest/server...
+      - name: Leakage and secrets, every store and every endpoint
         run: |
           pnpm --filter @memnest/store-contract exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage"
           pnpm --filter @memnest/store-sqlite exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage|no residue"
           pnpm --filter @memnest/store-postgres exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage"
+          pnpm --filter @memnest/server exec vitest run -t "never crosses containers|refuses requests without credentials|secrets never reach storage"
 
   pack:
     # Exports maps that work in the monorepo and break on install are the most common way a TS library ships broken.

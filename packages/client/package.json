@@ -1,14 +1,14 @@
 {
-  "name": "@memnest/cli",
-  "version": "0.1.0",
-  "description": "The memnest command line: migrate, ingest, search, seed, eval.",
+  "name": "@memnest/client",
+  "version": "0.0.0",
+  "description": "HTTP client for a Memnest server. Implements the same MemnestApi as the embedded engine.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/anidoesdev/MemNest.git",
-    "directory": "packages/cli"
+    "directory": "packages/client"
   },
-  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/client#readme",
   "bugs": {
     "url": "https://github.com/anidoesdev/MemNest/issues"
   },
@@ -18,9 +18,9 @@
     "ai-agents",
     "llm",
     "rag",
-    "embeddings",
-    "knowledge-graph",
-    "cli"
+    "client",
+    "http",
+    "sdk"
   ],
   "publishConfig": {
     "access": "public"
@@ -29,9 +29,6 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
-  },
-  "bin": {
-    "memnest": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -59,11 +56,10 @@
     "lint:pkg": "publint && attw --pack . --profile node16"
   },
   "dependencies": {
-    "@memnest/core": "workspace:^",
-    "@memnest/evals": "workspace:^",
-    "@memnest/providers": "workspace:^",
-    "@memnest/server": "workspace:^",
-    "@memnest/store-postgres": "workspace:^",
-    "@memnest/store-sqlite": "workspace:^"
+    "@memnest/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@memnest/server": "workspace:*",
+    "@memnest/store-sqlite": "workspace:*"
   }
 }

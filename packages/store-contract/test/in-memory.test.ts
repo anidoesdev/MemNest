@@ -1,7 +1,9 @@
 import { createInMemoryStore } from '@memnest/core/testing';
-import { TransactionsUnsupportedError } from '@memnest/core';
+import { TransactionsUnsupportedError, createInMemoryAuthStore } from '@memnest/core';
 import { describe, expect, it } from 'vitest';
-import { defineStoreContract } from '../src/index';
+import { defineAuthStoreContract, defineStoreContract } from '../src/index';
+
+defineAuthStoreContract('in-memory', async () => ({ auth: createInMemoryAuthStore() }));
 
 for (const vector of [false, true]) {
   defineStoreContract(vector ? 'in-memory (vector)' : 'in-memory', async () => {

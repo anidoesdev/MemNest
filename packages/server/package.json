@@ -1,14 +1,14 @@
 {
-  "name": "@memnest/cli",
-  "version": "0.1.0",
-  "description": "The memnest command line: migrate, ingest, search, seed, eval.",
+  "name": "@memnest/server",
+  "version": "0.0.0",
+  "description": "The Memnest HTTP server: REST + SSE over the engine, with argon2id API keys, container-scoped keys and dashboard sessions.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/anidoesdev/MemNest.git",
-    "directory": "packages/cli"
+    "directory": "packages/server"
   },
-  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/server#readme",
   "bugs": {
     "url": "https://github.com/anidoesdev/MemNest/issues"
   },
@@ -18,9 +18,10 @@
     "ai-agents",
     "llm",
     "rag",
-    "embeddings",
-    "knowledge-graph",
-    "cli"
+    "server",
+    "rest",
+    "sse",
+    "hono"
   ],
   "publishConfig": {
     "access": "public"
@@ -29,9 +30,6 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
-  },
-  "bin": {
-    "memnest": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -59,11 +57,13 @@
     "lint:pkg": "publint && attw --pack . --profile node16"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.1",
     "@memnest/core": "workspace:^",
-    "@memnest/evals": "workspace:^",
-    "@memnest/providers": "workspace:^",
-    "@memnest/server": "workspace:^",
-    "@memnest/store-postgres": "workspace:^",
-    "@memnest/store-sqlite": "workspace:^"
+    "@node-rs/argon2": "^2.2.1",
+    "hono": "^4.13.7"
+  },
+  "devDependencies": {
+    "@memnest/store-sqlite": "workspace:*",
+    "@memnest/store-postgres": "workspace:*"
   }
 }

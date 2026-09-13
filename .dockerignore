@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.turbo
+.pack-local
+.git
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*

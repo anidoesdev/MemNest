@@ -1,4 +1,6 @@
 import type {
+  ApiKeyRecord,
+  SessionRecord,
   MissingEmbedding,
   ProfilePolicy,
   StoredProfile,
@@ -192,6 +194,27 @@ export interface ClaimedJob {
   /** Including this one. */
   attempts: number;
   maxAttempts: number;
+}
+
+/**
+ * Credentials for the server. Deliberately separate from MemoryStore: keys and sessions are
+ * not container data, so they are not scoped, and `deleteContainer` leaves them alone.
+ */
+export interface AuthStore {
+  /** Inserts a new key. An existing id is a ValidationError: keys are never overwritten. */
+  putApiKey(key: ApiKeyRecord): Promise<void>;
+  getApiKey(id: string): Promise<ApiKeyRecord | null>;
+  /** Oldest first, revoked keys included. */
+  listApiKeys(): Promise<ApiKeyRecord[]>;
+  /** Marks the key revoked and deletes its sessions. False when the key is unknown or already revoked. */
+  revokeApiKey(id: string, at: string): Promise<boolean>;
+  touchApiKey(id: string, at: string): Promise<void>;
+
+  putSession(session: SessionRecord): Promise<void>;
+  getSession(id: string): Promise<SessionRecord | null>;
+  deleteSession(id: string): Promise<void>;
+  /** Returns how many were deleted. */
+  deleteExpiredSessions(now: string): Promise<number>;
 }
 
 export interface Redactor {

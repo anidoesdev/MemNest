@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Memnest context memory engine: types, ports and the engine. Zero I/O dependencies.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/OxBow/issues"
+  },
   "keywords": [
     "memnest",
     "memory",

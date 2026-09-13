@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Memnest eval harness: scripted fixtures for CI and live runs against a real model.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "directory": "packages/evals"
+  },
+  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/evals#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/OxBow/issues"
+  },
   "keywords": [
     "memnest",
     "memory",

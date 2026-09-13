@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "The memnest command line: migrate, ingest, search, seed, eval.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/OxBow/issues"
+  },
   "keywords": [
     "memnest",
     "memory",

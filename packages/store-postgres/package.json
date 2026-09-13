@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Postgres + pgvector store for Memnest: full-text and vector search, in its own memnest schema.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/OxBow.git",
+    "directory": "packages/store-postgres"
+  },
+  "homepage": "https://github.com/anidoesdev/OxBow/tree/main/packages/store-postgres#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/OxBow/issues"
+  },
   "keywords": [
     "memnest",
     "memory",

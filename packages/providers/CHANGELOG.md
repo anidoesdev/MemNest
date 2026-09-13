@@ -1,5 +1,11 @@
 # @memnest/providers
 
+## 0.1.1
+
+### Patch Changes
+
+- Ship the MIT LICENSE file in the package tarball.
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@memnest/providers",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Model providers for Memnest: Ollama, any OpenAI-compatible endpoint, and Voyage embeddings.",
   "license": "MIT",
   "repository": {

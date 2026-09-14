@@ -15,13 +15,31 @@ Memnest is where an agent's memories live. Nothing is thrown out: when a fact is
 | 2 | Extraction: prompt, schema, job queue, grouping | ✅ with scripted models. Not yet run against a live model |
 | 3 | Resolution: updates / extends / duplicate, versioning | ✅ with scripted models. Not yet run against a live model |
 | 4 | Postgres + pgvector, hybrid recall, RRF, trace, budget packing | ✅ Precision-at-scale passes on every store. Semantic recall not yet run against a live embedding model |
-| 5 | Profiles, forget, expiry, container delete. Public API complete, `0.1.0` | ✅ Published to npm (`0.1.0`, providers `0.1.1`) |
+| 5 | Profiles, forget, expiry, container delete. Public API complete, `0.1.0` | ✅ Published in `0.1.0` |
 | 6 | Server, auth, scoped keys, leakage suite | ✅ Leakage and secrets suites cover every endpoint on the in-memory, SQLite and Postgres stores |
 | 7 | `ui-core` + `ui-react`; lineage and trace views | ✅ A wrong memory is found and forgotten through the UI (jsdom and a real browser) |
-| 8 | Temporal and global graph views; 10k-node fixture | ✅ 10,000 memories open clustered in under a second; pan and zoom p95 frame 7ms with no long tasks |
+| 8 | Temporal and global graph views; 10k-node fixture | ✅ 10,000 memories open clustered in under a second; pan and zoom stay within the frame budget with no long tasks |
 | 9 | Runnel integration | Not started: Runnel's code is outside this repository |
 
-Nothing in the public API is stubbed. Every milestone through M8 is implemented and tested on the in-memory, SQLite and Postgres stores.
+Nothing in the public API is stubbed. Every milestone through M8 is implemented and tested on the in-memory, SQLite and Postgres stores. Not yet done: M9, a MemoryBench score, and extraction runs against a live model.
+
+## Install
+
+```sh
+npm install @memnest/core @memnest/store-sqlite     # embedded, SQLite
+npm install @memnest/store-postgres                 # or Postgres + pgvector
+npm install -g @memnest/cli                         # memnest migrate | serve | keys | ingest | search | …
+npm install @memnest/client                         # talk to a running server
+```
+
+| Package | Version |
+|---|---|
+| `@memnest/core`, `@memnest/store-sqlite`, `@memnest/store-postgres`, `@memnest/cli` | `0.2.0` |
+| `@memnest/server`, `@memnest/client`, `@memnest/ui-core`, `@memnest/ui-react` | `0.1.0` |
+| `@memnest/providers` | `0.1.2` |
+| `@memnest/evals` | `0.1.1` |
+
+Releases publish from CI with npm provenance. Upgrading a store from `0.1.x` needs `memnest migrate`: `0.2.0` adds the API key and session tables.
 
 ## Recall
 
@@ -356,7 +374,7 @@ These interpret the build prompt where it was silent or in tension with itself:
 21. **Memories written before an embedder was configured have no vectors** until `backfillEmbeddings(scope)` or `memnest backfill` runs. Until then they stay lexically searchable and show no `vectorRank` in the trace.
 22. **Profiles are invalidated eagerly and rebuilt lazily.** The prompt asks for a cached read that is never rebuilt on every write. But a forget (D5) must stop a fact being served, and a cached profile would otherwise keep repeating it until the next rebuild. So forget and supersede prune the items that cite those memories right away, and the rebuild waits for the threshold.
 23. **Profile rebuilds run as queued jobs when they need the model, and inline when they don't.** A write with a completion provider never waits on a model call. A deployment without one still gets profiles, built deterministically inline once the rebuild is due.
-24. **`0.1.0` was published from a local machine,** before the CI publish job existed, so it carries no provenance. `@memnest/providers` `0.1.1` and later releases publish from CI with provenance.
+24. **`0.1.0` was published from a local machine,** before the CI publish job existed, so it carries no provenance. `@memnest/providers` `0.1.1` and every later release publish from CI with provenance. A `v0.2.0` tag pushed before `changeset version` briefly published `@memnest/server`, `client`, `ui-core` and `ui-react` as `0.0.0`, built against the old core. Those versions are deprecated; release by running `changeset version`, merging, then tagging the version commit.
 25. **D2 covers the application API, not the operational one.** `MemnestApi` is what both the engine and `@memnest/client` implement. `startWorker`, `processDueJobs` and `backfillEmbeddings` stay on the embedded `Memnest`: they run where the store and queue live. A client that threw on them would satisfy the type but fail at runtime.
 26. **The server has endpoints the prompt's list lacks.** `GET /v1/memories/:id`, `POST /v1/profile/:tag/rebuild` and `GET /v1/runs` let the client implement `MemnestApi` fully. `GET/POST/DELETE /v1/session` issue and end the dashboard cookie. `/healthz` serves container health checks. `POST /v1/search` takes `include`, so `searchMemories` doesn't also run chunk retrieval.
 27. **Credentials live behind their own `AuthStore` port, not `MemoryStore`.** Keys and sessions are not container data, so hard rule 4's scoping doesn't apply to them, and `deleteContainer` leaves keys scoped to that container alone. Stores ship `authStore()` on their own tables (SQLite migration 5, Postgres migration 3).

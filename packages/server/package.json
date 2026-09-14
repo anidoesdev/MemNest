@@ -1,6 +1,6 @@
 {
   "name": "@memnest/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Memnest HTTP server: REST + SSE over the engine, with argon2id API keys, container-scoped keys and dashboard sessions.",
   "license": "MIT",
   "repository": {

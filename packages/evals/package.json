@@ -1,6 +1,6 @@
 {
   "name": "@memnest/evals",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Memnest eval harness: scripted fixtures for CI and live runs against a real model.",
   "license": "MIT",
   "repository": {

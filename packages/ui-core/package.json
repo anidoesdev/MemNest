@@ -1,6 +1,6 @@
 {
   "name": "@memnest/ui-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Framework-free UI logic for Memnest: controllers, graph layout, clustering, viewport math and canvas drawing.",
   "license": "MIT",
   "repository": {

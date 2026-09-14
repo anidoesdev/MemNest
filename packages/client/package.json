@@ -1,6 +1,6 @@
 {
   "name": "@memnest/client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "HTTP client for a Memnest server. Implements the same MemnestApi as the embedded engine.",
   "license": "MIT",
   "repository": {

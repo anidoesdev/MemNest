@@ -19,9 +19,8 @@ Memnest is where an agent's memories live. Nothing is thrown out: when a fact is
 | 6 | Server, auth, scoped keys, leakage suite | ✅ Leakage and secrets suites cover every endpoint on the in-memory, SQLite and Postgres stores |
 | 7 | `ui-core` + `ui-react`; lineage and trace views | ✅ A wrong memory is found and forgotten through the UI (jsdom and a real browser) |
 | 8 | Temporal and global graph views; 10k-node fixture | ✅ 10,000 memories open clustered in under a second; pan and zoom stay within the frame budget with no long tasks |
-| 9 | Runnel integration | Not started: Runnel's code is outside this repository |
 
-Nothing in the public API is stubbed. Every milestone through M8 is implemented and tested on the in-memory, SQLite and Postgres stores. Not yet done: M9, a MemoryBench score, and extraction runs against a live model.
+Nothing in the public API is stubbed. Every milestone through M8 is implemented and tested on the in-memory, SQLite and Postgres stores. Not yet done: a MemoryBench score, and extraction runs against a live model.
 
 ## Install
 

@@ -1,0 +1,81 @@
+{
+  "name": "@memnest/ui-core",
+  "version": "0.0.0",
+  "description": "Framework-free UI logic for Memnest: controllers, graph layout, clustering, viewport math and canvas drawing.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/MemNest.git",
+    "directory": "packages/ui-core"
+  },
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/ui-core#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/MemNest/issues"
+  },
+  "keywords": [
+    "memnest",
+    "memory",
+    "ai-agents",
+    "llm",
+    "ui",
+    "graph",
+    "visualization"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": [
+    "./dist/layout-worker.js",
+    "./dist/layout-worker.cjs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./layout-worker": {
+      "import": {
+        "types": "./dist/layout-worker.d.ts",
+        "default": "./dist/layout-worker.js"
+      },
+      "require": {
+        "types": "./dist/layout-worker.d.cts",
+        "default": "./dist/layout-worker.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint:pkg": "publint && attw --pack . --profile node16"
+  },
+  "dependencies": {
+    "@memnest/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@memnest/cli": "workspace:*",
+    "@memnest/store-sqlite": "workspace:*",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-quadtree": "^3.0.6",
+    "d3-force": "^3.0.0",
+    "d3-quadtree": "^3.0.1"
+  }
+}

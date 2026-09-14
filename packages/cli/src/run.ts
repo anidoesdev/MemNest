@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   createMemnest,
@@ -126,6 +126,7 @@ Options:
   --name <name>          keys create: what the key is for
   --port <port>          serve: default $MEMNEST_PORT or 8787
   --host <host>          serve: default $MEMNEST_HOST or 127.0.0.1
+  --dashboard <dir>      serve: a built dashboard to serve (default $MEMNEST_DASHBOARD_DIR)
   --json                 Machine-readable output
   -h, --help             Show this help`;
 
@@ -157,6 +158,7 @@ const OPTIONS = {
   name: { type: 'string' },
   port: { type: 'string' },
   host: { type: 'string' },
+  dashboard: { type: 'string' },
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const;
@@ -518,6 +520,8 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
       case 'serve': {
         const workerMode = io.env.MEMNEST_WORKER ?? 'auto';
         if (!['auto', 'on', 'off'].includes(workerMode)) throw new UsageError('MEMNEST_WORKER must be auto, on or off');
+        const dashboardDir = values.dashboard ?? io.env.MEMNEST_DASHBOARD_DIR;
+        if (dashboardDir && !existsSync(join(dashboardDir, 'index.html'))) throw new UsageError(`no dashboard build at ${dashboardDir} (index.html missing)`);
         const events = createJobEventHub();
         const { memnest, auth, hasCompletion } = await open({
           withCompletion: workerMode === 'on',
@@ -535,8 +539,10 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
         const http = await listen(server, {
           port: int(values.port ?? io.env.MEMNEST_PORT, 'port', 8787),
           hostname: values.host ?? io.env.MEMNEST_HOST ?? '127.0.0.1',
+          ...(dashboardDir ? { dashboard: dashboardDir } : {}),
         });
         const runWorker = workerMode !== 'off' && hasCompletion;
+        if (dashboardDir) io.err(`Dashboard: ${http.url}/ (from ${dashboardDir})`);
         if (runWorker) memnest.startWorker();
         io.err(`Memnest server listening on ${http.url} (${target})`);
         io.err(

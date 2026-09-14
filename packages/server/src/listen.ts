@@ -2,6 +2,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import type { MemnestServer } from './app';
+import { createDashboardHandler } from './dashboard';
 
 export interface ListeningServer {
   /** e.g. http://127.0.0.1:8787 */
@@ -11,11 +12,22 @@ export interface ListeningServer {
   close(): Promise<void>;
 }
 
-/** Serves on Node's HTTP server. Default host 127.0.0.1: listening on every interface is an explicit choice. */
-export function listen(server: MemnestServer, options: { port?: number; hostname?: string } = {}): Promise<ListeningServer> {
+export interface ListenOptions {
+  /** Default 8787. */
+  port?: number;
+  /** Default 127.0.0.1: listening on every interface is an explicit choice. */
+  hostname?: string;
+  /** A built dashboard directory to serve from the same origin as the API. */
+  dashboard?: string;
+}
+
+/** Serves on Node's HTTP server. */
+export function listen(server: MemnestServer, options: ListenOptions = {}): Promise<ListeningServer> {
   const hostname = options.hostname ?? '127.0.0.1';
+  const dashboard = options.dashboard ? createDashboardHandler(options.dashboard) : null;
+  const fetch = dashboard ? async (request: Request) => (await dashboard(request)) ?? server.fetch(request) : server.fetch;
   return new Promise((resolve, reject) => {
-    const http = serve({ fetch: server.fetch, port: options.port ?? 8787, hostname }, (info: AddressInfo) => {
+    const http = serve({ fetch, port: options.port ?? 8787, hostname }, (info: AddressInfo) => {
       const host = info.family === 'IPv6' ? `[${info.address}]` : info.address;
       resolve({
         url: `http://${host}:${info.port}`,

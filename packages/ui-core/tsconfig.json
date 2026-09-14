@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Rule 2: no framework and no DOM. Only ES and the handful of globals in src/globals.d.ts.
+    "lib": ["ES2023"],
+    "types": []
+  },
+  "include": ["src"]
+}

@@ -8,5 +8,6 @@ export {
   type Keyring,
   type KeyringOptions,
 } from './keyring';
-export { listen, type ListeningServer } from './listen';
+export { listen, type ListenOptions, type ListeningServer } from './listen';
+export { createDashboardHandler, DASHBOARD_HEADERS } from './dashboard';
 export { ROUTES, type RouteDefinition, type RouteId } from './routes';

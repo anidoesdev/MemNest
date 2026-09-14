@@ -1,4 +1,4 @@
-# Memnest: Postgres 16 + pgvector and the server. The dashboard joins this file in M7.
+# Memnest: Postgres 16 + pgvector, and the server with the dashboard on http://localhost:8787.
 #   docker compose up -d
 #   docker compose exec server memnest keys create --name admin
 #   curl -H "Authorization: Bearer <key>" "http://localhost:8787/v1/memories?containerTag=user:123"

@@ -17,9 +17,11 @@ Memnest is where an agent's memories live. Nothing is thrown out: when a fact is
 | 4 | Postgres + pgvector, hybrid recall, RRF, trace, budget packing | ✅ Precision-at-scale passes on every store. Semantic recall not yet run against a live embedding model |
 | 5 | Profiles, forget, expiry, container delete. Public API complete, `0.1.0` | ✅ Published to npm (`0.1.0`, providers `0.1.1`) |
 | 6 | Server, auth, scoped keys, leakage suite | ✅ Leakage and secrets suites cover every endpoint on the in-memory, SQLite and Postgres stores |
-| 7–9 | UI, Runnel | Not started |
+| 7 | `ui-core` + `ui-react`; lineage and trace views | ✅ A wrong memory is found and forgotten through the UI (jsdom and a real browser) |
+| 8 | Temporal and global graph views; 10k-node fixture | ✅ 10,000 memories open clustered in under a second; pan and zoom p95 frame 7ms with no long tasks |
+| 9 | Runnel integration | Not started: Runnel's code is outside this repository |
 
-Nothing in the public API is stubbed. Every milestone through M6 is implemented and tested on the in-memory, SQLite and Postgres stores.
+Nothing in the public API is stubbed. Every milestone through M8 is implemented and tested on the in-memory, SQLite and Postgres stores.
 
 ## Recall
 
@@ -183,6 +185,18 @@ const memnest = createMemnestClient({ baseUrl: 'http://localhost:8787', apiKey: 
 const { memories, trace } = await memnest.search('what database does this user use?', scopeOf('user:123'), { tokenBudget: 200 });
 ```
 
+## Dashboard
+
+`docker compose up -d`, create a key, and open http://localhost:8787. Without Docker: `pnpm build && memnest serve --dashboard apps/dashboard/dist`.
+
+- **Graph.** Every memory on a canvas. Colour is kind, size is reinforcement, superseded memories are faded, forgotten ones hollow. Edges are updates (arrow) and extends (dashed). Above 2,000 matching memories the graph shows topic clusters, and a click or a filter expands them. It is not a hairball at 10,000.
+- **Lineage.** What a memory superseded, what extends it, and the documents that produced it, as a layered DAG.
+- **Retrieval trace.** Every candidate for a query: lexical and vector rank, fused score, tokens, included or why not, with the budget line drawn across the list.
+- **Timeline.** A topic's facts over time, each switch dated.
+- **Detail.** Selecting a memory anywhere opens its content, kind, confidence, validity, version history, sources with their text, and Forget with confirmation. Nothing can be edited (D5).
+
+All UI logic lives in `@memnest/ui-core`, which has no framework and no DOM. `@memnest/ui-react` is a thin wrapper, under 150 lines of logic (tested). Layout runs in a Web Worker above 500 nodes. More: [apps/dashboard](apps/dashboard/README.md).
+
 ## Try it
 
 ```sh
@@ -288,6 +302,9 @@ Prefer Ollama's native adapter over its `/v1` route: it enforces the JSON schema
 | `@memnest/evals` | The eval harness and cases: scripted models for CI, `--live` for real ones. |
 | `@memnest/server` | Hono REST + SSE. argon2id API keys, container-scoped keys, dashboard sessions. |
 | `@memnest/client` | `MemnestApi` over HTTP, for Node, browsers and workers. |
+| `@memnest/ui-core` | Framework-free controllers, layered and force layout, topic clustering, hit-testing, canvas drawing. |
+| `@memnest/ui-react` | `useController`, `useWorkspace` and `GraphCanvas` over ui-core. |
+| `apps/dashboard` | Private. The React + Vite dashboard, served by `memnest serve --dashboard`. |
 | `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve` |
 | `@memnest/store-contract` | Private. The behavioural suite every store must pass. |
 
@@ -310,7 +327,7 @@ pnpm lint:pkg     # publint + attw
 pnpm pack:local   # pack tarballs, install into a throwaway consumer, smoke-test ESM/CJS/TS/bin
 ```
 
-CI (`.github/workflows/ci.yml`) runs typecheck → test → build → publint → attw, a separate required **security** job (store and server leakage + secrets, Postgres included), `pack:local` on Node 20/22 and Windows, and publishes on `v*` tags.
+CI (`.github/workflows/ci.yml`) runs typecheck → test → build → publint → attw, a separate required **security** job (store and server leakage + secrets, Postgres included), `pack:local` on Node 20/22 and Windows, a **dashboard e2e** job in Chromium, and publishes on `v*` tags.
 
 ## Decisions made while building
 
@@ -349,6 +366,13 @@ These interpret the build prompt where it was silent or in tension with itself:
 31. **SSE streams events from the worker in the server's process.** Queue events are in-process callbacks. A worker running elsewhere (`memnest worker`) still processes jobs, but the server doesn't see its events. Postgres `LISTEN/NOTIFY` can close this later. Queue-level errors carry no container, so they are never streamed.
 32. **Cookie-authenticated writes need an `x-memnest-csrf` header.** `SameSite=Strict` already keeps cookies off cross-site requests in current browsers. The header is a second guard that doesn't depend on the browser, because a cross-site form cannot set it. There is no CORS: serve the dashboard from the server's origin.
 33. **`memnest serve` lives in the CLI, not a separate binary.** The CLI already builds stores and providers from the environment, and the server package stays free of store and provider dependencies. The Docker image installs the packed tarballs and runs `memnest migrate && memnest serve`.
+34. **The dashboard is served by the server, from the same origin.** Sessions are `SameSite=Strict` and there is no CORS, so a dashboard on another origin could not sign in. `memnest serve --dashboard <dir>` serves the build with a strict CSP (`default-src 'self'`, no inline scripts or styles, no framing). API paths are never served from disk.
+35. **Above 2,000 matching memories, the graph clusters by topic.** Each memory joins the group of its most widespread meaningful term (terms shared by more than 60% of memories are ignored), and the 48 largest groups are kept. Clicking a cluster searches for its term, which shows its members or finer clusters, so a filter or search is always what expands (the prompt's "require a filter or a search"). Clusters are neutral grey: a kind colour would claim a kind they don't have.
+36. **The graph loads up to 10,000 memories in one request and filters on the client.** Filtering, clustering and hit-testing at that size take milliseconds, so the graph doesn't round-trip on every keystroke. Larger containers load the newest 10,000 and say so. Server-side clustering can replace this when containers outgrow it.
+37. **Forgotten memories are drawn hollow; superseded ones faded.** Kind colours are the first three slots of the validated categorical palette (checked for colour-blind separation in light and dark). Kind is never shown by colour alone: labels, legends and the list always name it.
+38. **The force layout has no charge cutoff.** A `distanceMax` on the many-body force left circular seams (visible rings of nodes) in large, mostly unconnected graphs. Unplaced nodes start scattered in a disk from a seeded generator (mulberry32; an LCG's correlated pairs drew spiral arms), so layouts are deterministic.
+39. **ui-core bundles d3-force and d3-quadtree.** They are ESM-only; bundling keeps ui-core's CommonJS build working on every supported Node.
+40. **The timeline completes version chains.** A topic search finds matching memories, including superseded and forgotten ones (the trace names them all). Their lineage then adds the rest of each UPDATES chain, so a switch shows both sides even when only one side matches the words. A superseded fact ends where its replacement begins.
 
 ## License
 

@@ -8,3 +8,4 @@
 *.db-shm
 .env
 .env.*
+apps/dashboard/e2e/out

@@ -1,7 +1,10 @@
-# Postgres 16 + pgvector for Memnest. The server and dashboard join this file in M6/M7.
+# Memnest: Postgres 16 + pgvector, and the server with the dashboard on http://localhost:8787.
 #   docker compose up -d
-#   export MEMNEST_DATABASE_URL=postgres://memnest:memnest@localhost:5432/memnest
-#   memnest migrate
+#   docker compose exec server memnest keys create --name admin
+#   curl -H "Authorization: Bearer <key>" "http://localhost:8787/v1/memories?containerTag=user:123"
+#
+# Model providers are read from your shell or an .env file next to this one (see `memnest providers env`).
+# For Ollama on the host, set MEMNEST_BASE_URL=http://host.docker.internal:11434.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -18,6 +21,32 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  server:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8787:8787'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    environment:
+      MEMNEST_DATABASE_URL: postgres://memnest:memnest@postgres:5432/memnest
+      # auto: run the extraction worker in the server when a completion provider is configured.
+      MEMNEST_WORKER: ${MEMNEST_WORKER:-auto}
+      MEMNEST_PROVIDER: ${MEMNEST_PROVIDER:-}
+      MEMNEST_BASE_URL: ${MEMNEST_BASE_URL:-}
+      MEMNEST_API_KEY: ${MEMNEST_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MEMNEST_COMPLETION_MODEL: ${MEMNEST_COMPLETION_MODEL:-}
+      MEMNEST_STRUCTURED_OUTPUT: ${MEMNEST_STRUCTURED_OUTPUT:-}
+      MEMNEST_EMBEDDING_PROVIDER: ${MEMNEST_EMBEDDING_PROVIDER:-}
+      MEMNEST_EMBEDDING_BASE_URL: ${MEMNEST_EMBEDDING_BASE_URL:-}
+      MEMNEST_EMBEDDING_API_KEY: ${MEMNEST_EMBEDDING_API_KEY:-}
+      MEMNEST_EMBEDDING_MODEL: ${MEMNEST_EMBEDDING_MODEL:-}
+      MEMNEST_EMBEDDING_DIMENSIONS: ${MEMNEST_EMBEDDING_DIMENSIONS:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
 
 volumes:
   memnest-pg:

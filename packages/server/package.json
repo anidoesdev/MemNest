@@ -1,0 +1,69 @@
+{
+  "name": "@memnest/server",
+  "version": "0.1.0",
+  "description": "The Memnest HTTP server: REST + SSE over the engine, with argon2id API keys, container-scoped keys and dashboard sessions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anidoesdev/MemNest.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/server#readme",
+  "bugs": {
+    "url": "https://github.com/anidoesdev/MemNest/issues"
+  },
+  "keywords": [
+    "memnest",
+    "memory",
+    "ai-agents",
+    "llm",
+    "rag",
+    "server",
+    "rest",
+    "sse",
+    "hono"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint:pkg": "publint && attw --pack . --profile node16"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@memnest/core": "workspace:^",
+    "@node-rs/argon2": "^2.2.1",
+    "hono": "^4.13.7"
+  },
+  "devDependencies": {
+    "@memnest/store-sqlite": "workspace:*",
+    "@memnest/store-postgres": "workspace:*"
+  }
+}

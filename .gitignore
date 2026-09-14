@@ -9,3 +9,4 @@ dist/
 coverage/
 .env
 .env.*
+apps/dashboard/e2e/out/

@@ -149,6 +149,31 @@ export const PG_MIGRATIONS: readonly PgMigration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: 'api_keys_and_sessions',
+    sql: (s) => /* sql */ `
+      -- Server credentials. Only argon2id hashes of key secrets and SHA-256 hashes of session tokens are stored.
+      CREATE TABLE ${s}.api_keys (
+        id            text PRIMARY KEY,
+        name          text NOT NULL,
+        secret_hash   text NOT NULL,
+        container_tag text,
+        created_at    timestamptz NOT NULL,
+        last_used_at  timestamptz,
+        revoked_at    timestamptz
+      );
+
+      CREATE TABLE ${s}.sessions (
+        id         text PRIMARY KEY,
+        key_id     text NOT NULL REFERENCES ${s}.api_keys (id),
+        created_at timestamptz NOT NULL,
+        expires_at timestamptz NOT NULL
+      );
+      CREATE INDEX sessions_key ON ${s}.sessions (key_id);
+      CREATE INDEX sessions_expires ON ${s}.sessions (expires_at);
+    `,
+  },
 ];
 
 const SCHEMA_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -195,6 +220,28 @@ export async function migrateDatabase(
 }
 
 /**
+ * Creates pgvector once per database. The extension is shared by every schema, so the per-schema migration
+ * lock does not serialise it, and concurrent `CREATE EXTENSION IF NOT EXISTS` can fail with a unique
+ * violation. A database-wide lock serialises creation; losing a race to another session still counts as created.
+ */
+async function ensureVectorExtension(client: PoolClient): Promise<void> {
+  const installed = async () => ((await client.query(`SELECT 1 FROM pg_extension WHERE extname = 'vector'`)).rowCount ?? 0) > 0;
+  if (await installed()) return;
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['memnest-migrate:pgvector']);
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    if (await installed()) return;
+    throw new ConfigurationError(
+      `the pgvector extension is not available (${(error as Error).message}). Install pgvector and run "CREATE EXTENSION vector;" as a superuser.`,
+    );
+  }
+}
+
+/**
  * Applies pending migrations in one transaction, under an advisory lock so concurrent
  * deploys cannot both migrate. Creates the pgvector extension if it is missing, which
  * needs a role allowed to do so; the error says what to run otherwise.
@@ -203,15 +250,9 @@ export async function migratePostgres(pool: Pool, schema = 'memnest'): Promise<P
   const s = quoteSchema(schema);
   const client = await pool.connect();
   try {
+    await ensureVectorExtension(client);
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`memnest-migrate:${schema}`]);
-    try {
-      await client.query('CREATE EXTENSION IF NOT EXISTS vector');
-    } catch (error) {
-      throw new ConfigurationError(
-        `the pgvector extension is not available (${(error as Error).message}). Install pgvector and run "CREATE EXTENSION vector;" as a superuser.`,
-      );
-    }
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${s}`);
     await client.query(`CREATE TABLE IF NOT EXISTS ${s}.migrations (id integer PRIMARY KEY, name text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
     const { pending } = await pgMigrationStatus(client, schema);

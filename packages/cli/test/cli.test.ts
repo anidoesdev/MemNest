@@ -47,10 +47,11 @@ describe('memnest cli', () => {
         { id: 2, name: 'extraction_stats_and_job_leases' },
         { id: 3, name: 'containers' },
         { id: 4, name: 'profiles' },
+        { id: 5, name: 'api_keys_and_sessions' },
       ],
-      version: 4,
+      version: 5,
     });
-    expect(await json('migrate')).toMatchObject({ applied: [], version: 4 });
+    expect(await json('migrate')).toMatchObject({ applied: [], version: 5 });
   });
 
   it('runs the database-switch story end to end', async () => {
@@ -312,7 +313,7 @@ describe('memnest cli', () => {
     };
 
     try {
-      expect(await pgRun('migrate')).toMatchObject({ version: 2 });
+      expect(await pgRun('migrate')).toMatchObject({ version: 3 });
       const postgres = await pgRun('memories', 'add', 'The user prefers Postgres over MongoDB for the payments database.', '--container', 'user:123');
       const mysql = await pgRun('memories', 'add', 'The user moved the payments database to MySQL.', '--container', 'user:123', '--supersedes', postgres.id);
       const response = (await pgRun('search', 'what database does this user use?', '--container', 'user:123', '--budget', '200')) as SearchResponse;
@@ -339,4 +340,56 @@ describe('memnest cli', () => {
     expect((await memnest('search', 'x', '--container', 'user:1', '--nope')).code).toBe(2);
     expect((await memnest('forget', 'mem_missing', '--container', 'user:1')).err).toMatch(/not_found/);
   });
+});
+
+describe('memnest keys and serve', () => {
+  it('creates, lists and revokes API keys, showing each key once', async () => {
+    await memnest('migrate');
+    const created = await json<{ key: string; id: string; containerTag: string | null }>('keys', 'create', '--name', 'dashboard', '--container', 'user:123');
+    expect(created.key).toMatch(/^mnk_[0-9a-f]{12}_/);
+    expect(created.containerTag).toBe('user:123');
+    const human = await memnest('keys', 'create', '--name', 'admin');
+    expect(human.out).toMatch(/^mnk_/);
+    expect(human.out).toContain('unscoped: it can reach every container');
+
+    const listed = await json<Array<Record<string, unknown>>>('keys', 'list');
+    expect(listed.map((k) => k.name)).toEqual(['dashboard', 'admin']);
+    expect(JSON.stringify(listed)).not.toContain(created.key);
+    expect(JSON.stringify(listed)).not.toContain('argon2');
+
+    expect((await memnest('keys', 'revoke', created.id)).code).toBe(0);
+    expect((await memnest('keys', 'revoke', created.id)).code).toBe(1);
+    expect((await json<Array<{ revokedAt?: string }>>('keys', 'list'))[0]!.revokedAt).toBeDefined();
+    expect((await memnest('keys', 'create')).err).toMatch(/--name is required/);
+  });
+
+  it('serves the API with keys created by the CLI, then stops on signal', async () => {
+    await memnest('migrate');
+    const { key } = await json<{ key: string }>('keys', 'create', '--name', 'serve-test', '--container', 'user:123');
+
+    const controller = new AbortController();
+    const err: string[] = [];
+    const io: CliIO = { out: () => undefined, err: (t) => err.push(t), env: { MEMNEST_WORKER: 'auto' }, signal: controller.signal };
+    const running = run(['serve', '--db', db, '--port', '0'], io);
+    const deadline = Date.now() + 10_000;
+    while (!err.some((line) => line.includes('listening on')) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    const url = /listening on (http:\/\/\S+)/.exec(err.join('\n'))![1]!;
+    expect(err.join('\n')).toContain('Worker off: no completion provider');
+
+    const headers = { authorization: `Bearer ${key}`, 'content-type': 'application/json' };
+    expect((await fetch(`${url}/healthz`)).status).toBe(200);
+    const written = await fetch(`${url}/v1/memories`, { method: 'POST', headers, body: JSON.stringify({ memories: [{ content: 'The user prefers Postgres.' }] }) });
+    expect(written.status).toBe(201);
+    const search = (await (await fetch(`${url}/v1/search`, { method: 'POST', headers, body: JSON.stringify({ query: 'Postgres' }) })).json()) as SearchResponse;
+    expect(search.memories.map((m) => m.memory.content)).toEqual(['The user prefers Postgres.']);
+    expect((await fetch(`${url}/v1/memories?containerTag=user:other`, { headers })).status).toBe(403);
+    expect((await fetch(`${url}/v1/memories`)).status).toBe(401);
+
+    controller.abort();
+    expect(await running).toBe(0);
+    await expect(fetch(`${url}/healthz`)).rejects.toThrow();
+
+    const listed = await json<Array<{ lastUsedAt?: string }>>('keys', 'list');
+    expect(listed[0]!.lastUsedAt).toBeDefined();
+  }, 30_000);
 });

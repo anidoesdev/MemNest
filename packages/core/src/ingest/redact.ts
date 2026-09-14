@@ -40,6 +40,8 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/\b(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA|AIPA)[A-Z0-9]{16}\b/g, '[REDACTED:aws-key]'],
   // GitHub tokens.
   [/\bgh[pousr]_[A-Za-z0-9]{30,}/g, '[REDACTED:github-token]'],
+  // Memnest API keys (see API_KEY_PATTERN), so a pasted key never becomes a memory.
+  [/\bmnk_[0-9a-f]{12}_[A-Za-z0-9_-]{16,}/g, '[REDACTED:memnest-key]'],
   // "my password is hunter2"
   [/\b(pass(?:word|code|phrase))(\s+(?:is|was)\s+)\S+/gi, '$1$2[REDACTED]'],
 ];

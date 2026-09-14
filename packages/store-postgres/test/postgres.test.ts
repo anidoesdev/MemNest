@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigurationError, createMemnest, scopeOf, type Job } from '@memnest/core';
 import { fixedClock, hashEmbedder, sequentialIds } from '@memnest/core/testing';
-import { defineStoreContract } from '@memnest/store-contract';
+import { defineAuthStoreContract, defineStoreContract } from '@memnest/store-contract';
 import pg from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PG_MIGRATIONS, createPostgresStore, migratePostgres, pgMigrationStatus, quoteSchema } from '../src/index';
@@ -46,6 +46,20 @@ if (url) {
         await store.close();
         return dumpSchema(schema);
       },
+      cleanup: async () => {
+        await store.close();
+        await admin!.query(`DROP SCHEMA IF EXISTS ${quoteSchema(schema)} CASCADE`);
+      },
+    };
+  });
+}
+
+if (url) {
+  defineAuthStoreContract('postgres', async () => {
+    const schema = freshSchema();
+    const store = await createPostgresStore({ connectionString: url, schema, autoMigrate: true, maxConnections: 2 });
+    return {
+      auth: store.authStore(),
       cleanup: async () => {
         await store.close();
         await admin!.query(`DROP SCHEMA IF EXISTS ${quoteSchema(schema)} CASCADE`);

@@ -12,6 +12,8 @@ import {
   queryTerms,
   systemClock,
   traverseLineage,
+  type ApiKeyRecord,
+  type AuthStore,
   type Chunk,
   type Clock,
   type ContainerRecord,
@@ -63,6 +65,8 @@ export interface SqliteStore extends MemoryStore {
    * write lock. Created on first call; later calls return the same queue and ignore options.
    */
   jobQueue(options?: Omit<JobQueueOptions, 'clock'>): SqliteJobQueue;
+  /** Server credentials on the `memnest_api_keys` and `memnest_sessions` tables, sharing this store's connection. */
+  authStore(): AuthStore;
 }
 
 interface DocumentRow {
@@ -919,9 +923,83 @@ export function createSqliteStore(options: SqliteStoreOptions = {}): SqliteStore
       }),
   });
 
+  interface ApiKeyRow {
+    id: string;
+    name: string;
+    secret_hash: string;
+    container_tag: string | null;
+    created_at: string;
+    last_used_at: string | null;
+    revoked_at: string | null;
+  }
+  const toApiKey = (r: ApiKeyRow): ApiKeyRecord => ({
+    id: r.id,
+    name: r.name,
+    secretHash: r.secret_hash,
+    ...(r.container_tag !== null ? { containerTag: r.container_tag } : {}),
+    createdAt: r.created_at,
+    ...(r.last_used_at !== null ? { lastUsedAt: r.last_used_at } : {}),
+    ...(r.revoked_at !== null ? { revokedAt: r.revoked_at } : {}),
+  });
+
+  const auth: AuthStore = {
+    putApiKey: (key) =>
+      exclusive(() => {
+        if (sql('SELECT 1 FROM memnest_api_keys WHERE id = ?').get(key.id)) {
+          throw new ValidationError(`API key ${key.id} already exists`);
+        }
+        sql(/* sql */ `
+          INSERT INTO memnest_api_keys (id, name, secret_hash, container_tag, created_at, last_used_at, revoked_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(key.id, key.name, key.secretHash, key.containerTag ?? null, key.createdAt, key.lastUsedAt ?? null, key.revokedAt ?? null);
+      }),
+    getApiKey: (id) =>
+      exclusive(() => {
+        const row = sql('SELECT * FROM memnest_api_keys WHERE id = ?').get(id) as ApiKeyRow | undefined;
+        return row ? toApiKey(row) : null;
+      }),
+    listApiKeys: () =>
+      exclusive(() => (sql('SELECT * FROM memnest_api_keys ORDER BY created_at, id').all() as ApiKeyRow[]).map(toApiKey)),
+    revokeApiKey: (id, at) =>
+      exclusive(() =>
+        atomically(() => {
+          const result = sql('UPDATE memnest_api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(at, id);
+          if (result.changes === 0) return false;
+          sql('DELETE FROM memnest_sessions WHERE key_id = ?').run(id);
+          return true;
+        }),
+      ),
+    touchApiKey: (id, at) =>
+      exclusive(() => {
+        sql('UPDATE memnest_api_keys SET last_used_at = ? WHERE id = ?').run(at, id);
+      }),
+    putSession: (session) =>
+      exclusive(() => {
+        sql('INSERT INTO memnest_sessions (id, key_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(
+          session.id,
+          session.keyId,
+          session.createdAt,
+          session.expiresAt,
+        );
+      }),
+    getSession: (id) =>
+      exclusive(() => {
+        const row = sql('SELECT id, key_id, created_at, expires_at FROM memnest_sessions WHERE id = ?').get(id) as
+          | { id: string; key_id: string; created_at: string; expires_at: string }
+          | undefined;
+        return row ? { id: row.id, keyId: row.key_id, createdAt: row.created_at, expiresAt: row.expires_at } : null;
+      }),
+    deleteSession: (id) =>
+      exclusive(() => {
+        sql('DELETE FROM memnest_sessions WHERE id = ?').run(id);
+      }),
+    deleteExpiredSessions: (now) => exclusive(() => sql('DELETE FROM memnest_sessions WHERE expires_at <= ?').run(now).changes),
+  };
+
   return {
     ...locked,
     db,
+    authStore: () => auth,
     capabilities: () => ({ ...capabilities }),
     transaction: (fn) =>
       exclusive(async () => {

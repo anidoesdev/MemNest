@@ -357,6 +357,20 @@ export type JobEvent =
   | { type: 'failed'; job: Job; attempt: number; error: string }
   | { type: 'error'; error: string };
 
+/** A job lifecycle event as the server streams it (SSE `job` events). Errors are redacted. */
+export interface JobStatusEvent {
+  type: 'started' | 'succeeded' | 'deferred' | 'retrying' | 'failed';
+  jobId: string;
+  jobType: Job['type'];
+  containerTag: ContainerTag;
+  /** Extraction jobs only. */
+  documentId?: string;
+  attempt?: number;
+  /** `deferred`: when the job runs again. `retrying`: when the retry is due. */
+  at?: string;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Recall
 
@@ -495,4 +509,29 @@ export interface MissingEmbedding {
 export interface DocumentWithChunks {
   document: Document;
   chunks: Chunk[];
+}
+
+// ---------------------------------------------------------------------------
+// Auth (the server's credentials; not container data)
+
+export interface ApiKeyRecord {
+  /** Public identifier, also embedded in the key itself. */
+  id: string;
+  name: string;
+  /** argon2id PHC string of the key's secret. The key itself is never stored. */
+  secretHash: string;
+  /** When set, the key can only read and write this container. Unset keys can reach every container. */
+  containerTag?: ContainerTag;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+export interface SessionRecord {
+  /** SHA-256 of the session token. The token itself is never stored. */
+  id: string;
+  /** Sessions carry no scope of their own: every request re-reads the key's, so revoking a key ends its sessions. */
+  keyId: string;
+  createdAt: string;
+  expiresAt: string;
 }

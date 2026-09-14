@@ -76,10 +76,10 @@ export interface MemnestOptions {
 }
 
 /**
- * The public engine API. `@memnest/client` implements this same interface over HTTP,
- * so consumers switch embedded ↔ remote by changing one import.
+ * Everything an application does with memory. Both the embedded engine and `@memnest/client`
+ * implement it, so consumers switch embedded ↔ remote by changing one import (D2).
  */
-export interface Memnest {
+export interface MemnestApi {
   /** Returns once the document is indexed. Extraction runs later (D7). */
   add(input: AddInput): Promise<AddResult>;
   getDocument(scope: Scope, id: string): Promise<DocumentWithChunks | null>;
@@ -105,14 +105,23 @@ export interface Memnest {
   profile(scope: Scope): Promise<Profile>;
   /** Builds the profile now, bypassing the cache and the rebuild policy. */
   rebuildProfile(scope: Scope): Promise<Profile>;
-  /** Embeds memories and chunks written before an embedding provider was configured. */
-  backfillEmbeddings(scope: Scope, opts?: { batchSize?: number }): Promise<{ memories: number; chunks: number }>;
   /** Hard delete of everything in the container (D6). */
   deleteContainer(scope: Scope): Promise<void>;
 
   /** Extraction runs, newest first, optionally for one document. */
   listExtractionRuns(scope: Scope, opts?: { limit?: number; documentId?: string }): Promise<ExtractionRun[]>;
 
+  /** Releases resources: the embedded engine stops its worker and closes the store. */
+  close(): Promise<void>;
+}
+
+/**
+ * The embedded engine. Adds the operations that only make sense in the process that owns
+ * the store and the queue: running the worker and backfilling embeddings.
+ */
+export interface Memnest extends MemnestApi {
+  /** Embeds memories and chunks written before an embedding provider was configured. */
+  backfillEmbeddings(scope: Scope, opts?: { batchSize?: number }): Promise<{ memories: number; chunks: number }>;
   /** Starts processing extraction jobs in the background. Requires a completion provider. */
   startWorker(): void;
   /** Processes every job that is due now, then resolves. Requires a queue that supports it. */

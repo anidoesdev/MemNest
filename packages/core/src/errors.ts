@@ -6,7 +6,10 @@ export type MemnestErrorCode =
   | 'provenance'
   | 'transactions_unsupported'
   | 'configuration'
-  | 'provider';
+  | 'provider'
+  | 'unauthorized'
+  /** An unexpected failure. Servers report it without detail; retrying may help. */
+  | 'internal';
 
 export class MemnestError extends Error {
   readonly code: MemnestErrorCode;
@@ -70,6 +73,13 @@ export class ConfigurationError extends MemnestError {
   }
 }
 
+/** Missing, malformed, revoked or expired credentials. */
+export class UnauthorizedError extends MemnestError {
+  constructor(message = 'a valid API key or session is required') {
+    super('unauthorized', message);
+  }
+}
+
 /**
  * Vectors from two embedding providers are not comparable. A container is locked to the
  * provider that first wrote to it; anything else is refused rather than silently mixed.
@@ -106,6 +116,7 @@ const PERMANENT_CODES: ReadonlySet<MemnestErrorCode> = new Set([
   'provenance',
   'transactions_unsupported',
   'configuration',
+  'unauthorized',
 ]);
 
 /**

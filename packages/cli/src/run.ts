@@ -1,11 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   createMemnest,
   MEMORY_KINDS,
   MemnestError,
   scopeOf,
+  type AuthStore,
   type ConversationTurn,
   type ExtractionMode,
   type InspectableJobQueue,
@@ -18,6 +19,7 @@ import {
 } from '@memnest/core';
 import { formatResult, runEvals } from '@memnest/evals';
 import { PROVIDER_ENV_VARS, providersFromEnv } from '@memnest/providers';
+import { createJobEventHub, createKeyring, createServer, listen } from '@memnest/server';
 import { createPostgresStore, migrateDatabase } from '@memnest/store-postgres';
 import { createSqliteStore, migrateFile } from '@memnest/store-sqlite';
 import { seedMemories } from './seed';
@@ -92,6 +94,10 @@ Commands:
   seed --container <tag> --count <n>    Write synthetic memories with structure
   providers check                       Call the configured completion and embedding endpoints
   providers env                         List the environment variables that configure providers
+  serve                                 Run the HTTP server (REST + SSE) and, with a completion provider, the worker
+  keys create --name <name>             Create an API key (--container to scope it); shown once
+  keys list                             List API keys
+  keys revoke <keyId>                   Revoke a key and end its sessions
   eval [--live] [--store <kind>]        Run the eval suite (scripted models, or --live with yours)
 
 Options:
@@ -117,6 +123,10 @@ Options:
   --live                 eval: use the configured model instead of scripted output
   --store <kind>         eval: memory (default) | sqlite | postgres
   --case <name>          eval: only cases whose name contains this
+  --name <name>          keys create: what the key is for
+  --port <port>          serve: default $MEMNEST_PORT or 8787
+  --host <host>          serve: default $MEMNEST_HOST or 127.0.0.1
+  --dashboard <dir>      serve: a built dashboard to serve (default $MEMNEST_DASHBOARD_DIR)
   --json                 Machine-readable output
   -h, --help             Show this help`;
 
@@ -145,6 +155,10 @@ const OPTIONS = {
   live: { type: 'boolean' },
   store: { type: 'string' },
   case: { type: 'string' },
+  name: { type: 'string' },
+  port: { type: 'string' },
+  host: { type: 'string' },
+  dashboard: { type: 'string' },
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const;
@@ -281,7 +295,7 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
   let store: MemoryStore | undefined;
   const open = async (
     opts: { withCompletion?: boolean; onEvent?: (event: JobEvent) => void } = {},
-  ): Promise<{ memnest: Memnest; store: MemoryStore; queue: InspectableJobQueue }> => {
+  ): Promise<{ memnest: Memnest; store: MemoryStore; queue: InspectableJobQueue; auth: AuthStore; hasCompletion: boolean }> => {
     // Resolve providers before touching the database, so a bad configuration fails first.
     const providers = providersFromEnv(io.env);
     if (opts.withCompletion && !providers.completion) {
@@ -289,14 +303,17 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
     }
     const queueOptions = opts.onEvent ? { onEvent: opts.onEvent } : {};
     let queue: InspectableJobQueue;
+    let auth: AuthStore;
     if (databaseUrl) {
       const pgStore = await createPostgresStore({ connectionString: databaseUrl, schema: pgSchema });
       store = pgStore;
       queue = pgStore.jobQueue(queueOptions);
+      auth = pgStore.authStore();
     } else {
       const sqliteStore = createSqliteStore({ filename: dbPath });
       store = sqliteStore;
       queue = sqliteStore.jobQueue(queueOptions);
+      auth = sqliteStore.authStore();
     }
     const memnest = createMemnest({
       store,
@@ -304,7 +321,7 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
       ...(providers.completion ? { completion: providers.completion } : {}),
       ...(providers.embedder ? { embedder: providers.embedder } : {}),
     });
-    return { memnest, store, queue };
+    return { memnest, store, queue, auth, hasCompletion: !!providers.completion };
   };
 
   try {
@@ -498,6 +515,97 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
         await memnest.close();
         store = undefined;
         return 0;
+      }
+
+      case 'serve': {
+        const workerMode = io.env.MEMNEST_WORKER ?? 'auto';
+        if (!['auto', 'on', 'off'].includes(workerMode)) throw new UsageError('MEMNEST_WORKER must be auto, on or off');
+        const dashboardDir = values.dashboard ?? io.env.MEMNEST_DASHBOARD_DIR;
+        if (dashboardDir && !existsSync(join(dashboardDir, 'index.html'))) throw new UsageError(`no dashboard build at ${dashboardDir} (index.html missing)`);
+        const events = createJobEventHub();
+        const { memnest, auth, hasCompletion } = await open({
+          withCompletion: workerMode === 'on',
+          onEvent: (event) => {
+            events.publish(event);
+            io.err(describeJobEvent(event));
+          },
+        });
+        const server = createServer({
+          memnest,
+          auth,
+          events,
+          session: { secureCookie: io.env.MEMNEST_COOKIE_SECURE !== 'false' },
+        });
+        const http = await listen(server, {
+          port: int(values.port ?? io.env.MEMNEST_PORT, 'port', 8787),
+          hostname: values.host ?? io.env.MEMNEST_HOST ?? '127.0.0.1',
+          ...(dashboardDir ? { dashboard: dashboardDir } : {}),
+        });
+        const runWorker = workerMode !== 'off' && hasCompletion;
+        if (dashboardDir) io.err(`Dashboard: ${http.url}/ (from ${dashboardDir})`);
+        if (runWorker) memnest.startWorker();
+        io.err(`Memnest server listening on ${http.url} (${target})`);
+        io.err(
+          runWorker
+            ? 'Worker running: extraction jobs are processed in this process.'
+            : workerMode === 'off'
+              ? 'Worker off (MEMNEST_WORKER=off): run `memnest worker` elsewhere to process extraction jobs.'
+              : 'Worker off: no completion provider, so extraction jobs wait. Run `memnest providers env` to configure one.',
+        );
+        if ((await auth.listApiKeys()).every((k) => k.revokedAt)) {
+          io.err('No active API keys yet. Create one with `memnest keys create --name admin`.');
+        }
+        await waitForShutdown(io.signal);
+        io.err('Stopping…');
+        await http.close();
+        await memnest.close();
+        store = undefined;
+        return 0;
+      }
+
+      case 'keys': {
+        const [sub = 'list', keyId] = rest;
+        const { auth } = await open();
+        const keyring = createKeyring({ auth });
+        if (sub === 'create') {
+          const name = required(values.name, 'name');
+          const { key, record } = await keyring.issue({ name, ...(values.container ? { containerTag: values.container } : {}) });
+          emit(
+            [
+              key,
+              '',
+              `Key ${record.id} "${record.name}" ${record.containerTag ? `scoped to ${record.containerTag}` : 'unscoped: it can reach every container'}.`,
+              'Store it now: only its hash is kept, so it cannot be shown again.',
+            ].join('\n'),
+            { key, id: record.id, name: record.name, containerTag: record.containerTag ?? null, createdAt: record.createdAt },
+          );
+          return 0;
+        }
+        if (sub === 'list') {
+          // Hashes are not secrets, but nothing reading this output needs them.
+          const keys = (await keyring.list()).map(({ secretHash: _hash, ...visible }) => visible);
+          emit(
+            keys
+              .map(
+                (k) =>
+                  `${k.id}  ${(k.revokedAt ? 'revoked' : 'active').padEnd(7)}  ${(k.containerTag ?? '(all containers)').padEnd(20)}  ${k.name}  created ${k.createdAt}` +
+                  (k.lastUsedAt ? `  last used ${k.lastUsedAt}` : ''),
+              )
+              .join('\n') || '(no API keys)',
+            keys,
+          );
+          return 0;
+        }
+        if (sub === 'revoke') {
+          if (!keyId) throw new UsageError('keys revoke needs a key id');
+          if (!(await keyring.revoke(keyId))) {
+            io.err(`error: no active API key ${keyId}`);
+            return 1;
+          }
+          emit(`Revoked ${keyId}; its sessions have ended`, { id: keyId, revoked: true });
+          return 0;
+        }
+        throw new UsageError('keys subcommands: create | list | revoke <keyId>');
       }
 
       case 'runs': {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigurationError, NotFoundError, ProviderError, createMemnest, scopeOf } from '@memnest/core';
 import { fixedClock, scriptedModel, sequentialIds } from '@memnest/core/testing';
-import { defineStoreContract } from '@memnest/store-contract';
+import { defineAuthStoreContract, defineStoreContract } from '@memnest/store-contract';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS, createSqliteStore, migrate, migrationStatus } from '../src/index';
@@ -40,6 +40,11 @@ defineStoreContract('sqlite', async () => {
     },
     cleanup: () => store.close(),
   };
+});
+
+defineAuthStoreContract('sqlite', async () => {
+  const store = createSqliteStore({ filename: tempDb(), autoMigrate: true });
+  return { auth: store.authStore(), cleanup: () => store.close() };
 });
 
 describe('sqlite migrations', () => {

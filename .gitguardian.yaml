@@ -1,0 +1,7 @@
+# Secret scanning: these files hold deliberately fake credentials that exercise the redactor and key parsing.
+version: 2
+secret:
+  ignored_paths:
+    - packages/core/test/redact.test.ts
+    - packages/core/src/testing/index.ts
+    - apps/dashboard/test/dashboard.test.tsx

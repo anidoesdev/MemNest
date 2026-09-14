@@ -1,7 +1,15 @@
 export * from './types';
 export type * from './ports';
 export * from './errors';
-export { createMemnest, type Memnest, type MemnestOptions } from './engine';
+export { createMemnest, type Memnest, type MemnestApi, type MemnestOptions } from './engine';
+export {
+  createInMemoryAuthStore,
+  API_KEY_PATTERN,
+  formatApiKey,
+  parseApiKey,
+  type InMemoryAuthStore,
+  type ParsedApiKey,
+} from './auth';
 export { scopeOf, assertInScope, assertValidContainerTag } from './scope';
 export { approxTokenCounter, randomIds, systemClock } from './defaults';
 export {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultRedactor, redactContent, redactMetadata } from '../src/index';
+import { defaultRedactor, formatApiKey, parseApiKey, redactContent, redactMetadata } from '../src/index';
 import { CREDENTIAL_FIXTURES, credentialTranscript } from '../src/testing/index';
 
 const redact = (s: string) => defaultRedactor.redact(s);
@@ -16,6 +16,7 @@ describe('defaultRedactor', () => {
     ['credential keys', 'gcp_credentials = {base64stuff}', 'base64stuff'],
     ['auth keys', 'AUTH_HEADER: xyz987', 'xyz987'],
     ['spoken passwords', 'my password is hunter2', 'hunter2'],
+    ['Memnest API keys', 'our key is mnk_0a1b2c3d4e5f_FAKE-test-secret-not-a-real-key-000_x, keep it', 'FAKE-test-secret-not-a-real-key-000_x'],
   ])('redacts %s', (_label, input, secret) => {
     const out = redact(input);
     expect(out).not.toContain(secret);
@@ -41,5 +42,30 @@ describe('defaultRedactor', () => {
     expect(
       redactMetadata({ apiToken: 'plain', note: 'key=sk-live-abcdefghijklmnopqr', count: 3 }, defaultRedactor),
     ).toEqual({ apiToken: '[REDACTED]', note: 'key=[REDACTED:secret-key]', count: 3 });
+  });
+});
+
+describe('API key format', () => {
+  const secret = 'FAKE-test-secret-not-a-real-key-0000_x';
+
+  it('formats and parses keys whose secret contains base64url punctuation', () => {
+    const key = formatApiKey('0a1b2c3d4e5f', secret);
+    expect(key).toBe(`mnk_0a1b2c3d4e5f_${secret}`);
+    expect(parseApiKey(key)).toEqual({ id: '0a1b2c3d4e5f', secret });
+  });
+
+  it.each([
+    ['a different prefix', `mnx_0a1b2c3d4e5f_${secret}`],
+    ['an uppercase id', `mnk_0A1B2C3D4E5F_${secret}`],
+    ['a short id', `mnk_0a1b2c_${secret}`],
+    ['a short secret', 'mnk_0a1b2c3d4e5f_tooshort'],
+    ['surrounding text', `Bearer mnk_0a1b2c3d4e5f_${secret}`],
+    ['a trailing space', `mnk_0a1b2c3d4e5f_${secret} `],
+  ])('rejects %s', (_label, value) => {
+    expect(parseApiKey(value)).toBeNull();
+  });
+
+  it('refuses to format an invalid key', () => {
+    expect(() => formatApiKey('xyz', secret)).toThrow(/12 hex characters/);
   });
 });

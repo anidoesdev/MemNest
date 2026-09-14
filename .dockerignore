@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+.pack-local
+.git
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+apps/dashboard/e2e/out

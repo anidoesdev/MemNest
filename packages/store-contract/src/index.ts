@@ -25,6 +25,8 @@ import {
 } from '@memnest/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+export { defineAuthStoreContract, type AuthStoreHarness } from './auth';
+
 const EMBEDDER = hashEmbedder();
 
 export interface StoreHarness {

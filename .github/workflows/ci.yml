@@ -61,12 +61,37 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@memnest/store-sqlite... --filter=@memnest/store-postgres...
-      - name: Leakage and secrets, every store
+      - run: pnpm turbo run build --filter=@memnest/store-sqlite... --filter=@memnest/store-postgres... --filter=@memnest/server...
+      - name: Leakage and secrets, every store and every endpoint
         run: |
           pnpm --filter @memnest/store-contract exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage"
           pnpm --filter @memnest/store-sqlite exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage|no residue"
           pnpm --filter @memnest/store-postgres exec vitest run -t "never crosses containers|never returns the other|secrets never reach storage"
+          pnpm --filter @memnest/server exec vitest run -t "never crosses containers|refuses requests without credentials|secrets never reach storage"
+
+  dashboard:
+    # M7/M8 acceptance in a real browser: find and forget a memory, lineage, timeline, trace, and 10,000 memories.
+    name: dashboard e2e (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @memnest/dashboard exec playwright install --with-deps chromium
+      - run: pnpm --filter @memnest/dashboard test:e2e
+        env:
+          E2E_OUT: ${{ github.workspace }}/e2e-screenshots
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dashboard-screenshots
+          path: e2e-screenshots
+          if-no-files-found: ignore
 
   pack:
     # Exports maps that work in the monorepo and break on install are the most common way a TS library ships broken.
@@ -94,7 +119,7 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [verify, security, pack]
+    needs: [verify, security, pack, dashboard]
     runs-on: ubuntu-latest
     permissions:
       contents: read

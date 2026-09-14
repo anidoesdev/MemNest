@@ -16,7 +16,7 @@ describe('defaultRedactor', () => {
     ['credential keys', 'gcp_credentials = {base64stuff}', 'base64stuff'],
     ['auth keys', 'AUTH_HEADER: xyz987', 'xyz987'],
     ['spoken passwords', 'my password is hunter2', 'hunter2'],
-    ['Memnest API keys', 'our key is mnk_0a1b2c3d4e5f_Qm9vZ3VzLXNlY3JldC1mb3ItdGVzdHMtb25seQ-_x, keep it', 'Qm9vZ3VzLXNlY3JldC1mb3ItdGVzdHMtb25seQ-_x'],
+    ['Memnest API keys', 'our key is mnk_0a1b2c3d4e5f_FAKE-test-secret-not-a-real-key-000_x, keep it', 'FAKE-test-secret-not-a-real-key-000_x'],
   ])('redacts %s', (_label, input, secret) => {
     const out = redact(input);
     expect(out).not.toContain(secret);
@@ -46,7 +46,7 @@ describe('defaultRedactor', () => {
 });
 
 describe('API key format', () => {
-  const secret = 'Qm9vZ3VzLXNlY3JldC1mb3ItdGVzdHMtb25seQ-_xyz';
+  const secret = 'FAKE-test-secret-not-a-real-key-0000_x';
 
   it('formats and parses keys whose secret contains base64url punctuation', () => {
     const key = formatApiKey('0a1b2c3d4e5f', secret);

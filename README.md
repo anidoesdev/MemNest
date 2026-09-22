@@ -29,6 +29,7 @@ npm install @memnest/core @memnest/store-sqlite     # embedded, SQLite
 npm install @memnest/store-postgres                 # or Postgres + pgvector
 npm install -g @memnest/cli                         # memnest migrate | serve | keys | ingest | search | …
 npm install @memnest/client                         # talk to a running server
+npx -y @memnest/cli mcp --container user:me         # memory for Claude, Cursor, VS Code: an MCP server
 ```
 
 | Package | Version |
@@ -202,6 +203,25 @@ const memnest = createMemnestClient({ baseUrl: 'http://localhost:8787', apiKey: 
 const { memories, trace } = await memnest.search('what database does this user use?', scopeOf('user:123'), { tokenBudget: 200 });
 ```
 
+## MCP
+
+`memnest mcp` gives any MCP client long-term memory over one container: Claude Desktop, Claude Code, Cursor, VS Code, and agent frameworks that speak MCP.
+
+```sh
+claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me
+```
+
+```json
+{ "mcpServers": { "memnest": { "command": "npx", "args": ["-y", "@memnest/cli", "mcp", "--container", "user:me"] } } }
+```
+
+- **Tools.** `recall` (current facts only, within a token budget), `remember` (skips exact duplicates; `supersedes` records a change), `ingest` (raw content through extraction), `forget`, `history` and `profile`. The profile is also the resource `memnest://profile`, and `with-memory` is a prompt.
+- **Local by default.** Memories live in `~/.memnest/memnest.db`, migrated on first use. The extraction worker runs when a completion provider is configured.
+- **Or shared.** `--url` (or `MEMNEST_SERVER_URL`) with `MEMNEST_KEY` uses a Memnest server, so several clients share one memory and people can review it in the dashboard. A scoped key sets the container.
+- **The model never picks the container.** It is configuration, so a prompt injection can't point the tools at someone else's memory. `--read-only` leaves only `recall`, `history` and `profile`.
+
+Client configs, options and embedding it in code: [packages/mcp](packages/mcp/README.md).
+
 ## Dashboard
 
 `docker compose up -d`, create a key, and open http://localhost:8787. Without Docker: `pnpm build && memnest serve --dashboard apps/dashboard/dist`.
@@ -319,10 +339,11 @@ Prefer Ollama's native adapter over its `/v1` route: it enforces the JSON schema
 | `@memnest/evals` | The eval harness and cases: scripted models for CI, `--live` for real ones. |
 | `@memnest/server` | Hono REST + SSE. argon2id API keys, container-scoped keys, dashboard sessions. |
 | `@memnest/client` | `MemnestApi` over HTTP, for Node, browsers and workers. |
+| `@memnest/mcp` | An MCP server over any `MemnestApi`: recall, remember, ingest, forget, history and profile tools for MCP clients. `@memnest/mcp/stdio` serves it over stdio. |
 | `@memnest/ui-core` | Framework-free controllers, layered and force layout, topic clustering, hit-testing, canvas drawing. |
 | `@memnest/ui-react` | `useController`, `useWorkspace` and `GraphCanvas` over ui-core. |
 | `apps/dashboard` | Private. The React + Vite dashboard, served by `memnest serve --dashboard`. |
-| `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve` |
+| `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve \| mcp` |
 | `@memnest/store-contract` | Private. The behavioural suite every store must pass. |
 
 ## Guarantees and how they are tested
@@ -390,6 +411,9 @@ These interpret the build prompt where it was silent or in tension with itself:
 38. **The force layout has no charge cutoff.** A `distanceMax` on the many-body force left circular seams (visible rings of nodes) in large, mostly unconnected graphs. Unplaced nodes start scattered in a disk from a seeded generator (mulberry32; an LCG's correlated pairs drew spiral arms), so layouts are deterministic.
 39. **ui-core bundles d3-force and d3-quadtree.** They are ESM-only; bundling keeps ui-core's CommonJS build working on every supported Node.
 40. **The timeline completes version chains.** A topic search finds matching memories, including superseded and forgotten ones (the trace names them all). Their lineage then adds the rest of each UPDATES chain, so a switch shows both sides even when only one side matches the words. A superseded fact ends where its replacement begins.
+41. **The MCP server's container is configuration, never a tool argument.** Tools act on the container the server was started with (or the one its key is scoped to). A model follows what it reads, so a tool that accepted a container would let a prompt injection reach another container: the hard boundary would be only as strong as the prompt.
+42. **MCP `remember` writes directly; `ingest` runs extraction.** Direct writes don't resolve, so `remember` would pile up duplicates if it only called `addMemories`. It skips exact duplicates of current memories (by `comparableContent`) and leaves relations to the calling model, which passes `supersedes` or `extends` after a `recall`: that model is already a capable resolver and has the context. Undistilled material goes through `ingest` and the full pipeline.
+43. **`memnest mcp` lives in the CLI; `@memnest/mcp` stays store-free.** As with `serve` (33), the CLI builds stores and providers from the environment. `@memnest/mcp` depends only on core and the MCP SDK and takes any `MemnestApi`, so the same server runs embedded or over `@memnest/client`. Locally it defaults to `~/.memnest/memnest.db` and migrates SQLite on first use, because MCP clients launch servers from arbitrary directories and have nowhere to show a "run migrate" error.
 
 ## License
 

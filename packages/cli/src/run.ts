@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, extname, join } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import { parseArgs } from 'node:util';
 import {
   createMemnest,
@@ -15,9 +17,12 @@ import {
   type JobStatus,
   type MemoryKind,
   type Memnest,
+  type MemnestApi,
   type SearchResponse,
 } from '@memnest/core';
+import { createMemnestClient } from '@memnest/client';
 import { formatResult, runEvals } from '@memnest/evals';
+import { serveMemnestStdio } from '@memnest/mcp/stdio';
 import { PROVIDER_ENV_VARS, providersFromEnv } from '@memnest/providers';
 import { createJobEventHub, createKeyring, createServer, listen } from '@memnest/server';
 import { createPostgresStore, migrateDatabase } from '@memnest/store-postgres';
@@ -30,6 +35,9 @@ export interface CliIO {
   env: Record<string, string | undefined>;
   /** Stops long-running commands (`worker`). The real CLI uses SIGINT/SIGTERM. */
   signal?: AbortSignal;
+  /** The MCP protocol channel for `mcp`. Default process.stdin / process.stdout. */
+  stdin?: Readable;
+  stdout?: Writable;
 }
 
 function describeJobEvent(event: JobEvent): string {
@@ -95,6 +103,7 @@ Commands:
   providers check                       Call the configured completion and embedding endpoints
   providers env                         List the environment variables that configure providers
   serve                                 Run the HTTP server (REST + SSE) and, with a completion provider, the worker
+  mcp --container <tag>                 Run an MCP server over stdio: memory tools for Claude, Cursor, VS Code, agents
   keys create --name <name>             Create an API key (--container to scope it); shown once
   keys list                             List API keys
   keys revoke <keyId>                   Revoke a key and end its sessions
@@ -127,6 +136,8 @@ Options:
   --port <port>          serve: default $MEMNEST_PORT or 8787
   --host <host>          serve: default $MEMNEST_HOST or 127.0.0.1
   --dashboard <dir>      serve: a built dashboard to serve (default $MEMNEST_DASHBOARD_DIR)
+  --url <url>            mcp: use a Memnest server (default $MEMNEST_SERVER_URL) with $MEMNEST_KEY, instead of a local database
+  --read-only            mcp: only recall, history and profile (default $MEMNEST_MCP_READ_ONLY)
   --json                 Machine-readable output
   -h, --help             Show this help`;
 
@@ -159,6 +170,8 @@ const OPTIONS = {
   port: { type: 'string' },
   host: { type: 'string' },
   dashboard: { type: 'string' },
+  url: { type: 'string' },
+  'read-only': { type: 'boolean' },
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
 } as const;
@@ -285,7 +298,9 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
     return values.help ? 0 : 2;
   }
 
-  const dbPath = values.db ?? io.env.MEMNEST_DB ?? 'memnest.db';
+  // MCP clients launch servers from any directory, so `mcp` keeps its database in the home directory.
+  const dbPath =
+    values.db ?? io.env.MEMNEST_DB ?? (command === 'mcp' ? join(homedir(), '.memnest', 'memnest.db') : 'memnest.db');
   const emit = (human: string, data: unknown) => io.out(values.json ? JSON.stringify(data, null, 2) : human);
 
   const databaseUrl = values['database-url'] ?? io.env.MEMNEST_DATABASE_URL;
@@ -294,7 +309,7 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
 
   let store: MemoryStore | undefined;
   const open = async (
-    opts: { withCompletion?: boolean; onEvent?: (event: JobEvent) => void } = {},
+    opts: { withCompletion?: boolean; onEvent?: (event: JobEvent) => void; autoMigrate?: boolean } = {},
   ): Promise<{ memnest: Memnest; store: MemoryStore; queue: InspectableJobQueue; auth: AuthStore; hasCompletion: boolean }> => {
     // Resolve providers before touching the database, so a bad configuration fails first.
     const providers = providersFromEnv(io.env);
@@ -310,7 +325,8 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
       queue = pgStore.jobQueue(queueOptions);
       auth = pgStore.authStore();
     } else {
-      const sqliteStore = createSqliteStore({ filename: dbPath });
+      if (opts.autoMigrate) mkdirSync(dirname(dbPath), { recursive: true });
+      const sqliteStore = createSqliteStore({ filename: dbPath, ...(opts.autoMigrate ? { autoMigrate: true } : {}) });
       store = sqliteStore;
       queue = sqliteStore.jobQueue(queueOptions);
       auth = sqliteStore.authStore();
@@ -559,6 +575,57 @@ export async function run(argv: string[], io: CliIO = processIO): Promise<number
         io.err('Stopping…');
         await http.close();
         await memnest.close();
+        store = undefined;
+        return 0;
+      }
+
+      case 'mcp': {
+        // stdout carries the protocol: everything human-readable goes to stderr.
+        const readOnly = values['read-only'] ?? ['1', 'true'].includes(io.env.MEMNEST_MCP_READ_ONLY ?? '');
+        const url = values.url ?? io.env.MEMNEST_SERVER_URL;
+        let api: MemnestApi;
+        let containerTag = values.container ?? io.env.MEMNEST_CONTAINER;
+        let where: string;
+        if (url) {
+          const apiKey = io.env.MEMNEST_KEY;
+          if (!apiKey) throw new UsageError('--url needs an API key in MEMNEST_KEY (create one with `memnest keys create --container <tag>`)');
+          const client = createMemnestClient({ baseUrl: url, apiKey });
+          const session = await client.session();
+          if (session.containerTag && containerTag && session.containerTag !== containerTag) {
+            throw new UsageError(`the key is scoped to ${session.containerTag}, not ${containerTag}`);
+          }
+          containerTag = session.containerTag ?? containerTag;
+          api = client;
+          where = url;
+        } else {
+          // A personal, local database: migrate it on first use instead of failing.
+          const workerMode = io.env.MEMNEST_WORKER ?? 'auto';
+          if (!['auto', 'on', 'off'].includes(workerMode)) throw new UsageError('MEMNEST_WORKER must be auto, on or off');
+          const opened = await open({
+            withCompletion: workerMode === 'on',
+            autoMigrate: !databaseUrl,
+            onEvent: (event) => io.err(describeJobEvent(event)),
+          });
+          if (workerMode !== 'off' && opened.hasCompletion) opened.memnest.startWorker();
+          else io.err('No extraction worker: `ingest` stores text, but memories are only extracted once a completion provider is configured.');
+          api = opened.memnest;
+          where = target;
+        }
+        if (!containerTag) throw new UsageError('--container is required (or MEMNEST_CONTAINER, or a key scoped to one container)');
+        scopeOf(containerTag);
+
+        const mcp = serveMemnestStdio({
+          memnest: api,
+          containerTag,
+          readOnly,
+          ...(io.stdin ? { stdin: io.stdin } : {}),
+          ...(io.stdout ? { stdout: io.stdout } : {}),
+          onerror: (error) => io.err(`mcp: ${error.message}`),
+        });
+        io.err(`Memnest MCP server on stdio: ${containerTag} (${where})${readOnly ? ', read-only' : ''}`);
+        await Promise.race([mcp.closed, waitForShutdown(io.signal)]);
+        await mcp.close();
+        await api.close();
         store = undefined;
         return 0;
       }

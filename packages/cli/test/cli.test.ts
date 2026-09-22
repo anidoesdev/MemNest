@@ -3,8 +3,10 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough, type Readable, type Writable } from 'node:stream';
 import type { LineageGraph, Memory, SearchResponse } from '@memnest/core';
 import { createPostgresStore } from '@memnest/store-postgres';
+import { Client, ReadBuffer, serializeMessage, type Transport } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { run, type CliIO } from '../src/index';
 
@@ -393,3 +395,111 @@ describe('memnest keys and serve', () => {
     expect(listed[0]!.lastUsedAt).toBeDefined();
   }, 30_000);
 });
+
+/** A client-side MCP transport over a pair of streams: the far end of `memnest mcp`'s stdio. */
+function streamTransport(from: Readable, to: Writable): Transport {
+  const buffer = new ReadBuffer();
+  const transport: Transport = {
+    async start() {
+      from.on('data', (chunk: Buffer) => {
+        buffer.append(chunk);
+        for (let message = buffer.readMessage(); message !== null; message = buffer.readMessage()) transport.onmessage?.(message);
+      });
+    },
+    async send(message) {
+      to.write(serializeMessage(message));
+    },
+    async close() {
+      to.end();
+      transport.onclose?.();
+    },
+  };
+  return transport;
+}
+
+async function mcp(argv: string[], env: Record<string, string> = {}) {
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const err: string[] = [];
+  const running = run(['mcp', ...argv], { out: () => undefined, err: (t) => err.push(t), env, stdin, stdout });
+  const client = new Client({ name: 'cli-test', version: '1.0.0' });
+  await client.connect(streamTransport(stdout, stdin));
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const result = await client.callTool({ name, arguments: args });
+    return (result.content as Array<{ text?: string }>).map((c) => c.text ?? '').join('\n');
+  };
+  return { client, call, err, running };
+}
+
+describe('memnest mcp', () => {
+  it('serves memory tools over stdio on a local database it migrates itself, and exits when the client leaves', async () => {
+    const fresh = join(dir, 'nested', 'mcp.db');
+    const { client, call, err, running } = await mcp(['--container', 'user:123', '--db', fresh]);
+    expect(client.getInstructions()).toContain('user:123');
+
+    const written = await call('remember', { memories: [{ content: 'The user prefers Postgres for the payments database.' }] });
+    const id = /(mem_\S+?):/.exec(written)![1]!;
+    await call('remember', { memories: [{ content: 'The user moved the payments database to MySQL.', supersedes: id }] });
+    expect(await call('recall', { query: 'payments database' })).toContain('MySQL');
+
+    await client.close();
+    expect(await running).toBe(0);
+    expect(err.join('\n')).toContain('Memnest MCP server on stdio: user:123');
+    expect(err.join('\n')).toContain('No extraction worker');
+
+    // The memories outlive the MCP session, in the same database the CLI reads.
+    const listedOut: string[] = [];
+    const listed = await run(['memories', 'list', '--container', 'user:123', '--db', fresh, '--json'], {
+      out: (t) => listedOut.push(t),
+      err: () => undefined,
+      env: {},
+    });
+    expect(listed).toBe(0);
+    expect((JSON.parse(listedOut.join('')) as Memory[]).filter((m) => m.isLatest).map((m) => m.content)).toEqual([
+      'The user moved the payments database to MySQL.',
+    ]);
+  }, 30_000);
+
+  it('uses a server with a scoped key, taking the container from the key', async () => {
+    await memnest('migrate');
+    const { key } = await json<{ key: string }>('keys', 'create', '--name', 'mcp', '--container', 'user:123');
+    const controller = new AbortController();
+    const serveErr: string[] = [];
+    const serving = run(['serve', '--db', db, '--port', '0'], { out: () => undefined, err: (t) => serveErr.push(t), env: {}, signal: controller.signal });
+    const deadline = Date.now() + 10_000;
+    while (!serveErr.some((line) => line.includes('listening on')) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    const url = /listening on (http:\/\/\S+)/.exec(serveErr.join('\n'))![1]!;
+
+    try {
+      const { client, call, running } = await mcp(['--read-only'], { MEMNEST_SERVER_URL: url, MEMNEST_KEY: key });
+      expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(['history', 'profile', 'recall']);
+      expect(await call('recall', { query: 'anything' })).toContain('Nothing relevant');
+      await client.close();
+      expect(await running).toBe(0);
+
+      const mismatch: string[] = [];
+      const code = await run(['mcp', '--container', 'user:999'], {
+        out: () => undefined,
+        err: (t) => mismatch.push(t),
+        env: { MEMNEST_SERVER_URL: url, MEMNEST_KEY: key },
+        stdin: new PassThrough(),
+        stdout: new PassThrough(),
+      });
+      expect(code).toBe(2);
+      expect(mismatch.join('\n')).toContain('the key is scoped to user:123, not user:999');
+    } finally {
+      controller.abort();
+      await serving;
+    }
+  }, 30_000);
+
+  it('refuses to start without a container or without a key for the server', async () => {
+    const io = () => ({ out: () => undefined, err: (t: string) => errs.push(t), env: {} as Record<string, string>, stdin: new PassThrough(), stdout: new PassThrough() });
+    const errs: string[] = [];
+    expect(await run(['mcp', '--db', db], io())).toBe(2);
+    expect(errs.join('\n')).toContain('--container is required');
+    expect(await run(['mcp', '--url', 'http://127.0.0.1:1'], io())).toBe(2);
+    expect(errs.join('\n')).toContain('MEMNEST_KEY');
+  });
+});
+

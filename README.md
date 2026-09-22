@@ -342,6 +342,7 @@ Prefer Ollama's native adapter over its `/v1` route: it enforces the JSON schema
 | `@memnest/mcp` | An MCP server over any `MemnestApi`: recall, remember, ingest, forget, history and profile tools for MCP clients. `@memnest/mcp/stdio` serves it over stdio. |
 | `@memnest/ui-core` | Framework-free controllers, layered and force layout, topic clustering, hit-testing, canvas drawing. |
 | `@memnest/ui-react` | `useController`, `useWorkspace` and `GraphCanvas` over ui-core. |
+| `apps/site` | Private. The website: a landing page whose live preview runs the real engine in the browser, and the user guide. Static, deployed to Vercel ([apps/site](apps/site/README.md)). |
 | `apps/dashboard` | Private. The React + Vite dashboard, served by `memnest serve --dashboard`. |
 | `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve \| mcp` |
 | `@memnest/store-contract` | Private. The behavioural suite every store must pass. |

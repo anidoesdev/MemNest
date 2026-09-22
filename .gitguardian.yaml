@@ -5,3 +5,4 @@ secret:
     - packages/core/test/redact.test.ts
     - packages/core/src/testing/index.ts
     - apps/dashboard/test/dashboard.test.tsx
+    - apps/site/src/demo.ts

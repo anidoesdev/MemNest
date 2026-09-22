@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Memnest Guide · How it works and how to use it</title>
+    <meta name="description" content="The Memnest user guide: concepts, quickstart, MCP setup, the TypeScript API, the server and dashboard, model providers, extraction, recall and the trace, profiles, and troubleshooting." />
+    <meta property="og:title" content="Memnest Guide" />
+    <meta property="og:description" content="How Memnest works and how to use it: from a two-minute quickstart to MCP, Postgres and the dashboard." />
+    <meta property="og:image" content="/og.png" />
+    <meta name="theme-color" content="#13201a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script src="/theme.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" />
+    <script type="module" src="/src/guide.ts"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar">
+      <div class="wrap">
+        <a class="brand" href="/" aria-label="Memnest home">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17c4 7 22 7 26 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><path d="M5.5 20.5c5 4 16 4 21 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5" /><ellipse cx="12.5" cy="13" rx="4" ry="5" fill="#1f7680" /><ellipse cx="19.5" cy="13.5" rx="4" ry="5" fill="#6cc6ca" opacity=".55" /></svg>
+          Memnest
+        </a>
+        <nav aria-label="Main">
+          <a href="/#preview">Live preview</a>
+          <a href="/#how">How it works</a>
+          <a href="/#integrate">Integrations</a>
+          <a href="/guide" aria-current="page">Guide</a>
+        </nav>
+        <div class="bar-actions">
+          <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" stroke-linecap="round" /></svg>
+          </button>
+          <a class="gh" href="https://github.com/anidoesdev/MemNest" rel="noopener">GitHub ↗</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="wrap">
+      <div class="guide-hero">
+        <div class="eyebrow">User guide</div>
+        <h1>How Memnest works, and how to use it</h1>
+        <p class="lede">Start with the mental model, then pick a setup. Every command here comes from the CLI and API in the repository.</p>
+      </div>
+
+      <div class="guide">
+        <nav class="toc" aria-label="Guide contents">
+          <a href="#model">How it works</a>
+          <a href="#concepts">Key concepts</a>
+          <a href="#setup">Choose a setup</a>
+          <a href="#quickstart">Quickstart</a>
+          <a href="#mcp">MCP clients</a>
+          <a href="#code">Use it from code</a>
+          <a href="#server">Server &amp; dashboard</a>
+          <a href="#models">Connect a model</a>
+          <a href="#extract">Ingest &amp; extraction</a>
+          <a href="#recall">Search &amp; the trace</a>
+          <a href="#profile">Profiles</a>
+          <a href="#forget">Correct &amp; delete</a>
+          <a href="#security">Security</a>
+          <a href="#trouble">Troubleshooting</a>
+          <a href="#cli">CLI reference</a>
+        </nav>
+
+        <div>
+          <section class="gsec" id="model">
+            <h2>How it works</h2>
+            <p>Memnest has two paths. The <strong>write path</strong> turns raw content into facts in the background. The <strong>read path</strong> finds the current facts for a question and fits them into a token budget. <a href="/#preview">The live preview</a> runs both in your browser.</p>
+            <div>
+              <div class="path-cap">Write path · add() returns after step 2; the rest runs in a job</div>
+              <div class="flow-wrap">
+                <ol class="flow">
+                  <li><div class="st"><b>add()</b><span>chat turns, markdown or text</span></div></li>
+                  <li><div class="st"><b>redact + chunk</b><span>secrets stripped, chunks indexed</span></div></li>
+                  <li><div class="st"><b>extract</b><span>one model call per quiet session</span></div></li>
+                  <li><div class="st"><b>screen</b><span>drop pronouns, secrets, low confidence</span></div></li>
+                  <li><div class="st key"><b>resolve</b><span>new · duplicate · updates · extends</span></div></li>
+                  <li><div class="st"><b>write</b><span>one transaction, with provenance</span></div></li>
+                </ol>
+              </div>
+            </div>
+            <div>
+              <div class="path-cap">Read path · search()</div>
+              <div class="flow-wrap">
+                <ol class="flow">
+                  <li><div class="st"><b>query</b><span>+ scope + token budget</span></div></li>
+                  <li><div class="st"><b>lexical ∥ vector</b><span>run in parallel</span></div></li>
+                  <li><div class="st"><b>RRF fuse</b><span>k = 60</span></div></li>
+                  <li><div class="st key"><b>filter</b><span>latest, not forgotten, not expired</span></div></li>
+                  <li><div class="st"><b>rerank</b><span>optional, LLM</span></div></li>
+                  <li><div class="st"><b>pack</b><span>memories, then chunks, to budget</span></div></li>
+                </ol>
+              </div>
+            </div>
+            <p>The key step is <strong>resolve</strong>. For each new candidate fact, Memnest retrieves up to 10 similar current memories and decides how they relate: <span class="pill new">new</span> (nothing similar; no model call), <span class="pill">duplicate</span> (reinforce the existing memory), <span class="pill updates">updates</span> (new version served, old one kept as not-latest) or <span class="pill extends">extends</span> (linked, both current). Identical text is caught without a model call.</p>
+            <p class="callout">When the model gives an invalid answer, Memnest retries once, then writes the fact as <code>new</code>. A missed relation can be fixed later; a wrong <code>updates</code> would hide a true fact.</p>
+          </section>
+
+          <section class="gsec" id="concepts">
+            <h2>Key concepts</h2>
+            <dl class="gloss">
+              <dt>container tag</dt><dd>Whose memory this is, e.g. <code>user:123</code> or <code>customer:acme</code>. A hard boundary: nothing crosses between containers. Every call takes a scope built with <code>scopeOf(tag)</code>.</dd>
+              <dt>document</dt><dd>Raw input: a conversation (<code>{ role, content }</code> turns), markdown or text. Split into <strong>chunks</strong> that are searchable right away.</dd>
+              <dt>customId</dt><dd>A stable id for a document. Re-sending with the same id creates a new version; in batched mode, documents that share it form one session.</dd>
+              <dt>memory</dt><dd>One atomic, self-contained fact with a <strong>kind</strong> (<code>fact</code>, <code>preference</code> or <code>episode</code>), a confidence, an optional expiry, and links to its sources.</dd>
+              <dt>latest / not-latest</dt><dd>When a memory is updated, the new version is latest and the old one is kept but no longer served.</dd>
+              <dt>forgotten</dt><dd>A soft delete by a person. Out of search and profiles, still visible for audit.</dd>
+              <dt>provenance</dt><dd>Every memory points to the document and extraction run that produced it. Stores refuse memories without one.</dd>
+              <dt>extraction run</dt><dd>The log of one extraction job: candidates, decisions with reasons, and redacted rejections. <code>memnest runs</code> shows them.</dd>
+              <dt>trace</dt><dd>Returned by every search: each candidate's lexical and vector rank, fused score, tokens, and whether it was included or why not.</dd>
+              <dt>profile</dt><dd>A cached, prompt-ready summary of a container: stable facts plus recent activity, each line citing its memories.</dd>
+            </dl>
+          </section>
+
+          <section class="gsec" id="setup">
+            <h2>Choose a setup</h2>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Setup</th><th>Good for</th><th>Search</th><th>Start with</th></tr></thead>
+                <tbody>
+                  <tr><td>MCP server</td><td>Claude, Cursor, VS Code, MCP agents</td><td>Its store's</td><td><code>npx -y @memnest/cli mcp --container user:me</code></td></tr>
+                  <tr><td>Embedded SQLite</td><td>Local agents, prototypes, one process</td><td>Lexical (FTS5)</td><td><code>@memnest/core</code> + <code>@memnest/store-sqlite</code></td></tr>
+                  <tr><td>Embedded Postgres</td><td>Production in your own Node service</td><td>Lexical + vector</td><td><code>@memnest/core</code> + <code>@memnest/store-postgres</code></td></tr>
+                  <tr><td>Server + dashboard</td><td>Several services, people reviewing memory</td><td>Its store's</td><td><code>docker compose up -d</code>, then <code>@memnest/client</code> or REST</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>The engine and the HTTP client implement the same <code>MemnestApi</code>, so you can start embedded and move to a server without changing application code.</p>
+          </section>
+
+          <section class="gsec" id="quickstart">
+            <h2>Quickstart: see a fact change in two minutes</h2>
+            <p>No model or database needed. This uses SQLite and direct writes.</p>
+            <ol class="steps">
+              <li><strong>Install the CLI</strong><div class="code"><pre>npm install -g @memnest/cli</pre></div></li>
+              <li><strong>Create a database and write a fact</strong><div class="code"><pre>memnest migrate --db demo.db
+memnest memories add "The user prefers Postgres over MongoDB for the payments database." \
+  --container user:123 --db demo.db          <span class="c"># prints the new memory's id</span></pre></div></li>
+              <li><strong>Write a fact that replaces it</strong><div class="code"><pre>memnest memories add "The user moved the payments database to MySQL." \
+  --supersedes &lt;id-from-step-2&gt; --container user:123 --db demo.db</pre></div></li>
+              <li><strong>Ask</strong><div class="code"><pre>memnest search "what database does this user use?" --container user:123 --budget 200 --db demo.db</pre></div><p>You get the MySQL memory. The trace lists the Postgres memory as excluded, <code>not-latest</code>.</p></li>
+              <li><strong>Look at the history</strong><div class="code"><pre>memnest memories list --all --container user:123 --db demo.db
+memnest lineage &lt;mysql-id&gt; --container user:123 --db demo.db</pre></div></li>
+            </ol>
+            <p class="callout">Direct writes skip extraction, so you set relations yourself with <code>--supersedes</code> or <code>--extends</code>. With a model configured, <code>memnest ingest</code> finds them for you (see <a href="#extract">Ingest &amp; extraction</a>).</p>
+          </section>
+
+          <section class="gsec" id="mcp">
+            <h2>MCP clients</h2>
+            <p><code>memnest mcp</code> gives any MCP client long-term memory over one container. It speaks MCP over stdio, which is how local clients launch servers.</p>
+            <div class="tabs" role="tablist" data-tabs aria-label="MCP client">
+              <button role="tab" id="m-cc" aria-controls="mp-cc" aria-selected="true" type="button">Claude Code</button>
+              <button role="tab" id="m-desk" aria-controls="mp-desk" type="button">Claude Desktop · Cursor</button>
+              <button role="tab" id="m-vs" aria-controls="mp-vs" type="button">VS Code</button>
+            </div>
+            <div id="mp-cc" role="tabpanel" aria-labelledby="m-cc" class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
+            <div id="mp-desk" role="tabpanel" aria-labelledby="m-desk" class="code" hidden><pre>{ <span class="k">"mcpServers"</span>: { <span class="k">"memnest"</span>: { <span class="k">"command"</span>: <span class="s">"npx"</span>, <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>] } } }</pre></div>
+            <div id="mp-vs" role="tabpanel" aria-labelledby="m-vs" class="code" hidden><pre>{ <span class="k">"servers"</span>: { <span class="k">"memnest"</span>: { <span class="k">"type"</span>: <span class="s">"stdio"</span>, <span class="k">"command"</span>: <span class="s">"npx"</span>, <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>] } } }</pre></div>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td><code>recall</code></td><td>Current facts relevant to a question, within a token budget. Says how many older facts were left out and why.</td></tr>
+                  <tr><td><code>remember</code></td><td>Stores facts, one sentence each. Skips exact duplicates. <code>supersedes</code> records a change; <code>extends</code> adds detail.</td></tr>
+                  <tr><td><code>ingest</code></td><td>Hands raw notes or transcripts to extraction. Searchable at once; memories appear once extraction runs.</td></tr>
+                  <tr><td><code>forget</code></td><td>Stops serving a wrong memory; it stays in history.</td></tr>
+                  <tr><td><code>history</code></td><td>Where a memory came from and how it changed.</td></tr>
+                  <tr><td><code>profile</code></td><td>A prompt-ready summary. Also the resource <code>memnest://profile</code>.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <ul>
+              <li><strong>Local by default.</strong> Memories live in <code>~/.memnest/memnest.db</code>, created and migrated on first use. <code>--db</code>, <code>MEMNEST_DB</code> or <code>MEMNEST_DATABASE_URL</code> change that.</li>
+              <li><strong>Shared through a server.</strong> <code>--url https://memnest.example.com</code> with <code>MEMNEST_KEY</code> set. A key made with <code>memnest keys create --container user:me</code> fixes the container.</li>
+              <li><strong>The model never picks the container.</strong> It's configuration, so a prompt injection can't reach someone else's memory. <code>--read-only</code> leaves only <code>recall</code>, <code>history</code> and <code>profile</code>.</li>
+            </ul>
+          </section>
+
+          <section class="gsec" id="code">
+            <h2>Use it from code</h2>
+            <p class="sub">Embedded, no server</p>
+            <div class="code"><pre><span class="k">import</span> { createMemnest, scopeOf } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+<span class="k">import</span> { createSqliteStore } <span class="k">from</span> <span class="s">'@memnest/store-sqlite'</span>;
+
+<span class="k">const</span> store = createSqliteStore({ filename: <span class="s">'memnest.db'</span>, autoMigrate: <span class="k">true</span> });
+<span class="k">const</span> memnest = createMemnest({ store, queue: store.jobQueue() });
+
+<span class="k">await</span> memnest.add({ containerTag: <span class="s">'user:123'</span>, content: [{ role: <span class="s">'user'</span>, content: <span class="s">'I prefer Postgres.'</span> }] });
+<span class="k">const</span> { memories, chunks, trace } = <span class="k">await</span> memnest.search(<span class="s">'database'</span>, scopeOf(<span class="s">'user:123'</span>), { tokenBudget: <span class="s">200</span> });</pre></div>
+            <p>Extraction needs a completion provider and a worker: pass <code>completion</code> to <code>createMemnest</code> and call <code>memnest.startWorker()</code>, or run <code>memnest worker</code>. Until then chunks are searchable but no memories are extracted.</p>
+            <p class="sub">Postgres with embeddings</p>
+            <div class="code"><pre><span class="k">import</span> { ollamaEmbeddings } <span class="k">from</span> <span class="s">'@memnest/providers'</span>;
+<span class="k">import</span> { createPostgresStore } <span class="k">from</span> <span class="s">'@memnest/store-postgres'</span>;
+
+<span class="k">const</span> store = <span class="k">await</span> createPostgresStore({ connectionString: process.env.MEMNEST_DATABASE_URL });
+<span class="k">const</span> memnest = createMemnest({ store, queue: store.jobQueue(), embedder: ollamaEmbeddings({ model: <span class="s">'nomic-embed-text'</span> }) });</pre></div>
+            <p class="sub">Against a server</p>
+            <div class="code"><pre><span class="k">import</span> { createMemnestClient } <span class="k">from</span> <span class="s">'@memnest/client'</span>;
+
+<span class="k">const</span> memnest = createMemnestClient({ baseUrl: <span class="s">'http://localhost:8787'</span>, apiKey: process.env.MEMNEST_KEY });</pre></div>
+            <p>The main calls: <code>add</code>, <code>search</code>, <code>searchMemories</code>, <code>searchDocuments</code>, <code>profile</code>, <code>addMemories</code>, <code>listMemories</code>, <code>getLineage</code>, <code>forget</code>, <code>graph</code>, <code>deleteDocument</code>, <code>deleteContainer</code> and <code>listExtractionRuns</code>. Errors are <code>MemnestError</code>s with a <code>code</code> such as <code>validation</code>, <code>not_found</code> or <code>scope_violation</code>.</p>
+          </section>
+
+          <section class="gsec" id="server">
+            <h2>Server &amp; dashboard</h2>
+            <ol class="steps">
+              <li><strong>Start Postgres + pgvector and the server</strong><div class="code"><pre>docker compose up -d   <span class="c"># server on http://localhost:8787</span></pre></div></li>
+              <li><strong>Create an API key</strong> (shown once; only its hash is stored)<div class="code"><pre>docker compose exec server memnest keys create --name admin
+docker compose exec server memnest keys create --name acme-bot --container customer:acme   <span class="c"># scoped</span></pre></div></li>
+              <li><strong>Write and search over REST</strong><div class="code"><pre>curl -X POST localhost:8787/v1/memories -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","memories":[{"content":"The user prefers Postgres over MongoDB."}]}'
+curl -X POST localhost:8787/v1/search -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","query":"what database does this user use?","options":{"tokenBudget":200}}'</pre></div></li>
+              <li><strong>Open the dashboard</strong> at <code>http://localhost:8787</code> and sign in with the key.</li>
+            </ol>
+            <dl class="gloss">
+              <dt>Graph</dt><dd>Every memory. Colour is kind, size is reinforcement; superseded memories are faded, forgotten ones hollow. Above 2,000 memories it groups topics into clusters.</dd>
+              <dt>Lineage</dt><dd>One memory, what it replaced, what extends it, and its source documents.</dd>
+              <dt>Retrieval trace</dt><dd>Every candidate for a query, with the budget line drawn across the list.</dd>
+              <dt>Timeline</dt><dd>A topic's facts over time, each change dated.</dd>
+              <dt>Detail</dt><dd>Content, kind, confidence, validity, versions and sources, plus Forget. Memories are never edited: a wrong one is forgotten.</dd>
+            </dl>
+          </section>
+
+          <section class="gsec" id="models">
+            <h2>Connect a model</h2>
+            <p>Extraction, resolution and model-written profiles need a <strong>completion</strong> model; semantic search needs an <strong>embedding</strong> model. They can come from different providers: Ollama, or any OpenAI-compatible endpoint.</p>
+            <div class="code"><pre><span class="c"># Ollama for everything (embeddings default: nomic-embed-text)</span>
+export MEMNEST_PROVIDER=ollama MEMNEST_COMPLETION_MODEL=llama3.1:8b
+
+<span class="c"># OpenAI (embeddings default: text-embedding-3-small)</span>
+export OPENAI_API_KEY=sk-... MEMNEST_COMPLETION_MODEL=gpt-4.1-mini
+
+memnest providers check   <span class="c"># calls both endpoints</span>
+memnest providers env     <span class="c"># every supported variable</span></pre></div>
+            <p class="callout warn">Prefer Ollama's native adapter to its <code>/v1</code> route: it enforces the JSON schema. For servers that only support JSON mode, set <code>MEMNEST_STRUCTURED_OUTPUT=json_object</code>.</p>
+          </section>
+
+          <section class="gsec" id="extract">
+            <h2>Ingest &amp; extraction</h2>
+            <div class="code"><pre>memnest ingest session.json --container user:123 --custom-id session-1   <span class="c"># .json turns, .md or .txt</span>
+memnest worker                     <span class="c"># or: memnest jobs run</span>
+memnest runs --container user:123  <span class="c"># decisions and rejections, with reasons</span></pre></div>
+            <ul>
+              <li><strong><code>batched</code></strong> (default): documents sharing a <code>customId</code> form a session, extracted once it has been quiet for 30 seconds (at most 10 minutes after its first unextracted version). If the session grows, only the new part is extracted.</li>
+              <li><strong><code>instant</code></strong>: extract each document right away. For tests and demos.</li>
+              <li><strong><code>none</code></strong>: index chunks only.</li>
+            </ul>
+            <p>Candidates are rejected for unresolved pronouns, anything the redactor catches, confidence below 0.5, an expiry already past, malformed output, or duplicates within the batch. A failed job never loses the document: its chunks stay searchable and <code>memnest jobs retry &lt;jobId&gt;</code> requeues it.</p>
+          </section>
+
+          <section class="gsec" id="recall">
+            <h2>Search &amp; the trace</h2>
+            <p><code>search()</code> returns <strong>memories</strong> (facts for the prompt), <strong>chunks</strong> (source text for grounding) and a <strong>trace</strong>. Memories are packed first; chunks share what's left.</p>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td><code>tokenBudget</code></td><td>2000</td><td>Most tokens to return. <code>budget.used</code> is exactly the included total.</td></tr>
+                  <tr><td><code>candidates</code></td><td>50</td><td>Pool size from each retriever.</td></tr>
+                  <tr><td><code>rerank</code></td><td>off</td><td>LLM rerank of the top 20; drops scores below 0.2.</td></tr>
+                  <tr><td><code>minVectorScore</code></td><td>0</td><td>Ignore vector hits at or below this similarity.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>A candidate is excluded as <code>not-latest</code> (replaced), <code>forgotten</code>, <code>expired</code>, <code>rerank</code> or <code>budget</code>. When vector search can't run, <code>trace.degraded</code> says why: SQLite has no vector search, no embedding provider is configured, the container has no embeddings yet, or the query embedding failed.</p>
+          </section>
+
+          <section class="gsec" id="profile">
+            <h2>Profiles</h2>
+            <div class="code"><pre><span class="k">const</span> { text, stable, recent, stale } = <span class="k">await</span> memnest.profile(scopeOf(<span class="s">'user:123'</span>));</pre></div>
+            <ul>
+              <li>A <strong>cached read</strong>, rebuilt after 10 memory changes or when 24 hours old, never on every write.</li>
+              <li><strong>Safe even when stale</strong>: forgetting or replacing a memory removes every profile line that cites it immediately.</li>
+              <li>Model-written profiles are checked: every line must cite real memories, with no pronouns or secrets, or the deterministic builder answers instead.</li>
+            </ul>
+          </section>
+
+          <section class="gsec" id="forget">
+            <h2>Correct &amp; delete</h2>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Action</th><th>Call</th><th>Effect</th></tr></thead>
+                <tbody>
+                  <tr><td>Forget a memory</td><td><code>forget(scope, id)</code></td><td>Out of search and profiles at once; kept for audit.</td></tr>
+                  <tr><td>Replace a fact</td><td><code>addMemories</code> with <code>supersedes</code></td><td>New latest version; the old one kept as not-latest.</td></tr>
+                  <tr><td>Delete a document</td><td><code>deleteDocument(scope, id)</code></td><td>Content and chunks erased; the row stays so memories keep a traceable source.</td></tr>
+                  <tr><td>Delete a container</td><td><code>deleteContainer(scope)</code></td><td>Hard delete of everything in it, for erasure requests.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="gsec" id="security">
+            <h2>Security</h2>
+            <ul>
+              <li><strong>Containers are hard boundaries</strong>, in the engine and over HTTP. Scope comes from the key, in middleware; handlers never read a container from the request.</li>
+              <li><strong>Keys</strong> look like <code>mnk_&lt;id&gt;_&lt;secret&gt;</code>; only argon2id hashes are stored. <code>memnest keys revoke</code> ends a key's sessions too.</li>
+              <li><strong>Secrets never reach storage.</strong> Redaction runs before hashing, chunking or saving.</li>
+              <li><strong>Not included yet:</strong> rate limiting and per-key permissions beyond container scope.</li>
+            </ul>
+          </section>
+
+          <section class="gsec" id="trouble">
+            <h2>Troubleshooting</h2>
+            <div>
+              <details class="faq"><summary>I ingested a conversation but no memories appeared</summary><div><p>Extraction needs a completion model and a worker. Check <code>memnest providers check</code>, then run <code>memnest worker</code>. In batched mode it also waits 30 quiet seconds. <code>memnest runs</code> shows what was rejected and why.</p></div></details>
+              <details class="faq"><summary>The trace says lexical-only</summary><div><p>Read the reason in <code>degraded</code>. SQLite has no vector search: use Postgres. No embedding provider: set <code>MEMNEST_EMBEDDING_PROVIDER</code>. No embeddings yet: run <code>memnest backfill --container &lt;tag&gt;</code>.</p></div></details>
+              <details class="faq"><summary>An error names two embedding providers</summary><div><p>That's the dimension lock: a container keeps the first embedding provider it saw so vectors never mix. Go back to it, or use a new container.</p></div></details>
+              <details class="faq"><summary>The MCP server doesn't show up in my client</summary><div><p>Run the command from the config in a terminal: it should print <code>Memnest MCP server on stdio</code> to stderr and wait. Missing <code>--container</code> is the usual cause. Clients show a server's stderr in their MCP logs.</p></div></details>
+              <details class="faq"><summary>The store refuses to open: pending migrations</summary><div><p>Run <code>memnest migrate</code>, or pass <code>autoMigrate: true</code> to <code>createSqliteStore</code>. (<code>memnest mcp</code> migrates its SQLite database itself.)</p></div></details>
+            </div>
+          </section>
+
+          <section class="gsec" id="cli">
+            <h2>CLI reference</h2>
+            <p>SQLite by default (<code>--db</code> or <code>MEMNEST_DB</code>), Postgres with <code>--database-url</code> or <code>MEMNEST_DATABASE_URL</code>. <code>--json</code> for machine-readable output.</p>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+                <tbody>
+                  <tr><td><code>migrate</code></td><td>Apply pending schema migrations</td></tr>
+                  <tr><td><code>ingest &lt;file…&gt;</code></td><td>Add documents; <code>--custom-id</code>, <code>--extraction</code>, <code>--date</code></td></tr>
+                  <tr><td><code>search &lt;query&gt;</code></td><td>Recall with the trace; <code>--budget</code>, <code>--candidates</code></td></tr>
+                  <tr><td><code>memories list | add</code></td><td>List (<code>--all</code> includes history) or write directly</td></tr>
+                  <tr><td><code>forget &lt;id&gt;</code> · <code>lineage &lt;id&gt;</code></td><td>Soft-delete a memory · show its lineage</td></tr>
+                  <tr><td><code>jobs | worker | runs</code></td><td>Extraction jobs, the worker, and run logs</td></tr>
+                  <tr><td><code>profile</code> · <code>backfill</code></td><td>Cached profile (<code>--rebuild</code>) · embed what has no vectors</td></tr>
+                  <tr><td><code>serve</code></td><td>REST + SSE server; <code>--dashboard</code>, <code>--port</code></td></tr>
+                  <tr><td><code>mcp</code></td><td>MCP server over stdio; <code>--container</code>, <code>--url</code>, <code>--read-only</code></td></tr>
+                  <tr><td><code>keys create | list | revoke</code></td><td>API keys; <code>--container</code> to scope</td></tr>
+                  <tr><td><code>providers check | env</code> · <code>eval</code> · <code>seed</code></td><td>Model checks · eval suite · synthetic memories</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site">
+      <div class="wrap">
+        <span>Memnest · MIT licensed</span>
+        <nav aria-label="Footer">
+          <a href="/">Home</a>
+          <a href="https://github.com/anidoesdev/MemNest" rel="noopener">GitHub</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

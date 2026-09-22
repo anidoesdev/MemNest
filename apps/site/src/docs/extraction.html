@@ -1,0 +1,56 @@
+<p><code>add()</code> returns as soon as the text is indexed, so your app never waits on a model. A job then turns the document into facts:</p>
+<div class="flow-wrap">
+  <ol class="flow">
+    <li><div class="st"><b>load group</b><span>every version of this session</span></div></li>
+    <li><div class="st"><b>wait for quiet</b><span>30s idle, capped at 10 min</span></div></li>
+    <li><div class="st"><b>extract</b><span>one completion per window</span></div></li>
+    <li><div class="st key"><b>screen</b><span>deterministic checks</span></div></li>
+    <li><div class="st"><b>resolve</b><span>one call per candidate, no lock held</span></div></li>
+    <li><div class="st"><b>write</b><span>re-validated, one transaction</span></div></li>
+  </ol>
+</div>
+
+<h2 id="modes">Modes</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Mode</th><th>When it runs</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td><code>batched</code> (default)</td><td>Once the session has been quiet for 30 seconds</td><td>Real conversations</td></tr>
+      <tr><td><code>instant</code></td><td>Immediately</td><td>Tests and demos</td></tr>
+      <tr><td><code>none</code></td><td>Never</td><td>Documents you only want searchable as text</td></tr>
+    </tbody>
+  </table>
+</div>
+<p><strong>Why batched is the default.</strong> A single chat message rarely holds a durable fact; a session does. Extracting per message produces fragments like "He moved there in March" that depend on context the memory will never be shown with. Documents sharing a <code>customId</code> form one session, extracted once over the newest version. If the session keeps growing, only the new part is extracted, with the processed tail passed along so references still resolve.</p>
+
+<h2 id="screening">What gets rejected</h2>
+<p>The prompt asks for self-contained, one-topic, non-trivial, secret-free candidates. Deterministic checks then enforce that <em>regardless of what the model returns</em>:</p>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Reason</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>unresolved-pronoun</code></td><td>"She never picks up the phone." Who is she? A memory is shown without its conversation.</td></tr>
+      <tr><td><code>secret</code></td><td>Anything the redactor catches: API keys, tokens, passwords.</td></tr>
+      <tr><td><code>low-confidence</code></td><td>Below 0.5. Small talk and guesses.</td></tr>
+      <tr><td><code>already-expired</code></td><td>An expiry in the past.</td></tr>
+      <tr><td><code>duplicate-in-batch</code></td><td>The same fact twice in one run.</td></tr>
+      <tr><td><code>malformed</code>, <code>empty</code>, <code>too-long</code></td><td>Output that does not fit the schema.</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>Every rejection is recorded, redacted, on the run. Nothing is silently dropped.</p>
+
+<h2 id="runs">Reading a run</h2>
+<div class="code"><pre>memnest ingest session.json --container user:123 --custom-id session-1   <span class="c"># .json turns, .md or .txt</span>
+memnest worker                     <span class="c"># or: memnest jobs run — process what is due, then exit</span>
+memnest runs --container user:123</pre></div>
+<p>A run lists every decision with how it was reached: <code>no-neighbors</code> and <code>exact</code> cost no model call, <code>model</code> is a resolution call, <code>fallback</code> means the model's answer was invalid twice and the fact was written as <code>new</code>, and <code>conflict</code> means the target was forgotten or superseded between planning and writing, so the fact was written as <code>new</code> instead. <a href="/#preview">The live preview</a> shows a real run.</p>
+
+<h2 id="jobs">Jobs</h2>
+<p>One queue implementation runs over pluggable storage: in memory, the SQLite <code>memnest_jobs</code> table, or Postgres. It handles attempts, exponential backoff, leases (a crashed worker's job is taken over) and deferral that does not spend attempts.</p>
+<div class="code"><pre>memnest jobs --container user:123 --status failed
+memnest jobs retry &lt;jobId&gt; --container user:123</pre></div>
+<p>A failed extraction never loses the document: its chunks stay searchable, and the job can be requeued. Supply your own queue (BullMQ, say) through the <code>JobQueue</code> port.</p>
+
+<h2 id="chunks">Contextual chunks</h2>
+<p>Chunks are embedded when the document is added. When the extraction job runs, one extra completion writes a one-sentence summary of the newest version, and the chunks are re-embedded with that summary in front, so a chunk that says "we moved it last week" still retrieves for "Acme database migration". This is best-effort: if it fails, the reason is recorded and extraction continues.</p>

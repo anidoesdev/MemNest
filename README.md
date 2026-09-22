@@ -207,6 +207,15 @@ const { memories, trace } = await memnest.search('what database does this user u
 
 `memnest mcp` gives any MCP client long-term memory over one container: Claude Desktop, Claude Code, Cursor, VS Code, and agent frameworks that speak MCP.
 
+In Claude Code, as a plugin with commands (`/memnest:memories`, `/memnest:remember`, `/memnest:forget`):
+
+```
+/plugin marketplace add anidoesdev/MemNest
+/plugin install memnest@memnest
+```
+
+Or the server on its own, anywhere:
+
 ```sh
 claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me
 ```
@@ -220,7 +229,7 @@ claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me
 - **Or shared.** `--url` (or `MEMNEST_SERVER_URL`) with `MEMNEST_KEY` uses a Memnest server, so several clients share one memory and people can review it in the dashboard. A scoped key sets the container.
 - **The model never picks the container.** It is configuration, so a prompt injection can't point the tools at someone else's memory. `--read-only` leaves only `recall`, `history` and `profile`.
 
-Client configs, options and embedding it in code: [packages/mcp](packages/mcp/README.md).
+One-click install links for every client are on the site's [plugins page](apps/site/plugins.html). Client configs, options and embedding it in code: [packages/mcp](packages/mcp/README.md). The Claude Code plugin: [plugins/memnest](plugins/memnest/README.md).
 
 ## Dashboard
 
@@ -342,7 +351,8 @@ Prefer Ollama's native adapter over its `/v1` route: it enforces the JSON schema
 | `@memnest/mcp` | An MCP server over any `MemnestApi`: recall, remember, ingest, forget, history and profile tools for MCP clients. `@memnest/mcp/stdio` serves it over stdio. |
 | `@memnest/ui-core` | Framework-free controllers, layered and force layout, topic clustering, hit-testing, canvas drawing. |
 | `@memnest/ui-react` | `useController`, `useWorkspace` and `GraphCanvas` over ui-core. |
-| `apps/site` | Private. The website: a landing page whose live preview runs the real engine in the browser, and the user guide. Static, deployed to Vercel ([apps/site](apps/site/README.md)). |
+| `apps/site` | Private. The website: a landing page whose live preview runs the real engine and the dashboard's graph renderer in the browser, a documentation section, and the install page. Static, deployed to Vercel ([apps/site](apps/site/README.md)). |
+| `plugins/memnest` | The Claude Code plugin: the MCP server plus `/memnest:memories`, `/memnest:remember` and `/memnest:forget` ([plugins/memnest](plugins/memnest/README.md)). |
 | `apps/dashboard` | Private. The React + Vite dashboard, served by `memnest serve --dashboard`. |
 | `@memnest/cli` | `memnest migrate \| ingest \| search \| memories \| forget \| lineage \| profile \| backfill \| jobs \| worker \| runs \| seed \| providers \| eval \| keys \| serve \| mcp` |
 | `@memnest/store-contract` | Private. The behavioural suite every store must pass. |

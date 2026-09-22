@@ -15,6 +15,7 @@ import {
   type ExtractionRun,
   type LineageGraph,
   type Memnest,
+  type MemnestApi,
   type Memory,
   type MemoryKind,
   type Profile,
@@ -153,6 +154,8 @@ export interface IngestResult {
 
 export interface Demo {
   readonly container: string;
+  /** The engine itself, for ui-core controllers (the graph reads it like the dashboard does). */
+  readonly api: MemnestApi;
   now(): string;
   ingested(): Session['id'][];
   ingest(id: Session['id']): Promise<IngestResult>;
@@ -191,6 +194,7 @@ export function createDemo(): Demo {
 
   return {
     container: CONTAINER,
+    api: memnest,
     now: () => clock.now(),
     ingested: () => [...done],
 

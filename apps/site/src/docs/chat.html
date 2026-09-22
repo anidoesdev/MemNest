@@ -1,0 +1,114 @@
+<p>Memnest speaks <a href="https://modelcontextprotocol.io" rel="noopener">MCP</a>, the protocol assistants use to reach outside tools. Connect it once and your assistant can recall what you told it weeks ago, record new facts, and correct what it got wrong — in any conversation, not just the one where you said it.</p>
+
+<p><a class="btn primary" href="/plugins">Install for your client →</a></p>
+
+<h2 id="install">Set it up</h2>
+<div class="tabs" role="tablist" data-tabs aria-label="Client">
+  <button role="tab" id="c-cc" aria-controls="cp-cc" aria-selected="true" type="button">Claude Code</button>
+  <button role="tab" id="c-desk" aria-controls="cp-desk" type="button">Claude Desktop</button>
+  <button role="tab" id="c-cursor" aria-controls="cp-cursor" type="button">Cursor</button>
+  <button role="tab" id="c-vs" aria-controls="cp-vs" type="button">VS Code</button>
+</div>
+<div id="cp-cc" role="tabpanel" aria-labelledby="c-cc" class="panel">
+  <p>As a plugin, which adds <code>/memnest:memories</code>, <code>/memnest:remember</code> and <code>/memnest:forget</code> alongside the tools:</p>
+  <div class="code"><pre>/plugin marketplace add anidoesdev/MemNest
+/plugin install memnest@memnest</pre></div>
+  <p>Or the server on its own:</p>
+  <div class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
+</div>
+<div id="cp-desk" role="tabpanel" aria-labelledby="c-desk" class="panel" hidden>
+  <p>In <code>claude_desktop_config.json</code> (Settings → Developer → Edit Config), then quit Claude from the tray and reopen it:</p>
+  <div class="code"><pre>{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"memnest"</span>: {
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>]
+    }
+  }
+}</pre></div>
+  <p class="callout warn">On Windows, if the server does not appear, give the full path to Node instead of <code>npx</code>: <code>"command": "C:\\Program Files\\nodejs\\node.exe"</code> with the CLI's path as the first argument. Claude Desktop does not always inherit your <code>PATH</code>.</p>
+</div>
+<div id="cp-cursor" role="tabpanel" aria-labelledby="c-cursor" class="panel" hidden>
+  <p>In <code>.cursor/mcp.json</code> for one project, or <code>~/.cursor/mcp.json</code> for all of them:</p>
+  <div class="code"><pre>{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"memnest"</span>: {
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>]
+    }
+  }
+}</pre></div>
+  <p><a href="/plugins">The plugins page</a> has a one-click install link.</p>
+</div>
+<div id="cp-vs" role="tabpanel" aria-labelledby="c-vs" class="panel" hidden>
+  <p>In <code>.vscode/mcp.json</code>:</p>
+  <div class="code"><pre>{
+  <span class="k">"servers"</span>: {
+    <span class="k">"memnest"</span>: {
+      <span class="k">"type"</span>: <span class="s">"stdio"</span>,
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>]
+    }
+  }
+}</pre></div>
+  <p><a href="/plugins">The plugins page</a> has a one-click install link.</p>
+</div>
+
+<h2 id="tools">What your assistant can do</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>recall</code></td><td>Searches for current facts about a question, inside a token budget. Says how many older facts it left out, and why.</td></tr>
+      <tr><td><code>remember</code></td><td>Stores facts, one sentence each. Exact duplicates are skipped. To record a change it passes the outdated memory's id as <code>supersedes</code>, so the old one becomes history rather than a rival truth.</td></tr>
+      <tr><td><code>ingest</code></td><td>Hands over raw notes or a transcript for Memnest to extract facts from itself. Needs a completion model.</td></tr>
+      <tr><td><code>forget</code></td><td>Stops serving a memory that is wrong. It stays in history.</td></tr>
+      <tr><td><code>history</code></td><td>Where a memory came from and how it changed.</td></tr>
+      <tr><td><code>profile</code></td><td>A short summary of everything durable. Also offered as the resource <code>memnest://profile</code>.</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>The server also sends instructions telling the assistant when to recall and how to record a change, so this mostly happens without you asking.</p>
+
+<h2 id="try">Try it</h2>
+<ol class="steps">
+  <li><strong>Teach it something.</strong> "Remember that I deploy on Fridays only after 2pm, and that our staging database is Postgres 16."</li>
+  <li><strong>Start a new conversation</strong> and ask: "When can I deploy?" It should call <code>recall</code> and answer from memory.</li>
+  <li><strong>Change a fact.</strong> "We moved staging to MySQL." Ask what staging runs on: you get MySQL, and the Postgres fact is kept as history rather than deleted.</li>
+  <li><strong>Correct a mistake.</strong> "That's wrong, forget it." See <a href="/docs/managing">Managing your memories</a>.</li>
+</ol>
+
+<h2 id="where">Where your memories live</h2>
+<p>By default in <code>~/.memnest/memnest.db</code> on your own machine, created on first use. Nothing is sent anywhere. Point several clients at the same container to share one memory between them, or give each its own:</p>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Setting</th><th>Environment</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>--container &lt;tag&gt;</code></td><td><code>MEMNEST_CONTAINER</code></td><td>Whose memory this is. Required.</td></tr>
+      <tr><td><code>--db &lt;path&gt;</code></td><td><code>MEMNEST_DB</code></td><td>Where the SQLite file lives.</td></tr>
+      <tr><td><code>--database-url &lt;url&gt;</code></td><td><code>MEMNEST_DATABASE_URL</code></td><td>Use Postgres + pgvector instead, for semantic recall.</td></tr>
+      <tr><td><code>--url &lt;url&gt;</code></td><td><code>MEMNEST_SERVER_URL</code></td><td>Use a <a href="/docs/server">Memnest server</a>, with <code>MEMNEST_KEY</code>. The key's scope sets the container.</td></tr>
+      <tr><td><code>--read-only</code></td><td><code>MEMNEST_MCP_READ_ONLY</code></td><td>Only <code>recall</code>, <code>history</code> and <code>profile</code>: the assistant can read memory but not change it.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="shared">Share one memory across clients and people</h2>
+<p>Run a <a href="/docs/server">server</a>, create a key scoped to a container, and point every client at it. Then Claude Desktop, Cursor and your own app all see the same memories, and a person can review them in the dashboard.</p>
+<div class="code"><pre>memnest keys create --name claude --container user:me   <span class="c"># printed once</span></pre></div>
+<div class="code"><pre>{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"memnest"</span>: {
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--url"</span>, <span class="s">"https://memnest.example.com"</span>],
+      <span class="k">"env"</span>: { <span class="k">"MEMNEST_KEY"</span>: <span class="s">"mnk_…"</span> }
+    }
+  }
+}</pre></div>
+
+<h2 id="safety">What the assistant cannot do</h2>
+<ul>
+  <li><strong>Reach another container.</strong> The container comes from your configuration or the API key, never from a tool argument, so text the model reads cannot redirect it at someone else's memory.</li>
+  <li><strong>Store a secret.</strong> Credentials are redacted before anything is written, and a candidate carrying one is rejected.</li>
+  <li><strong>Quietly rewrite the past.</strong> Nothing is edited in place. A change writes a new version and keeps the old one; a deletion is recorded.</li>
+</ul>

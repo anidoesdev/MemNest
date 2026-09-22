@@ -1,4 +1,5 @@
 import './styles.css';
+import './pages.css';
 
 const THEME_KEY = 'memnest-theme';
 

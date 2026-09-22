@@ -1,0 +1,9 @@
+{
+  "name": "memnest",
+  "description": "Long-term memory for your chats: recall what you told Claude before, remember new facts, and correct what is wrong. Backed by a local Memnest database.",
+  "version": "0.1.0",
+  "author": { "name": "Memnest" },
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/plugins/memnest#readme",
+  "repository": "https://github.com/anidoesdev/MemNest",
+  "license": "MIT"
+}

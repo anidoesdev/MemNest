@@ -1,0 +1,50 @@
+<div class="code"><pre>npm install -g @memnest/cli
+memnest --help</pre></div>
+<p>SQLite by default (<code>--db</code>, or <code>MEMNEST_DB</code>, default <code>./memnest.db</code>), Postgres with <code>--database-url</code> or <code>MEMNEST_DATABASE_URL</code>. Add <code>--json</code> to any command for machine-readable output.</p>
+
+<h2 id="commands">Commands</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>migrate</code></td><td>Apply pending schema migrations</td></tr>
+      <tr><td><code>ingest &lt;file…&gt; --container &lt;tag&gt;</code></td><td>Add documents (<code>.json</code> turns, <code>.md</code>, <code>.txt</code>); <code>--custom-id</code>, <code>--extraction</code>, <code>--date</code></td></tr>
+      <tr><td><code>search &lt;query&gt; --container &lt;tag&gt;</code></td><td>Recall with the trace; <code>--budget</code>, <code>--candidates</code></td></tr>
+      <tr><td><code>memories list --container &lt;tag&gt;</code></td><td>List memories; <code>--all</code> includes superseded and forgotten, <code>--kind</code>, <code>--limit</code></td></tr>
+      <tr><td><code>memories add &lt;content&gt;</code></td><td>Write directly; <code>--kind</code>, <code>--confidence</code>, <code>--supersedes</code>, <code>--extends</code>, <code>--valid-until</code></td></tr>
+      <tr><td><code>forget &lt;memoryId&gt;</code></td><td>Soft-delete a memory</td></tr>
+      <tr><td><code>lineage &lt;memoryId&gt;</code></td><td>Show what it replaced, what extends it, and its sources</td></tr>
+      <tr><td><code>jobs</code> · <code>jobs run</code> · <code>jobs retry &lt;id&gt;</code></td><td>List (<code>--status</code>), process what is due, or requeue a failed job</td></tr>
+      <tr><td><code>worker</code></td><td>Process extraction jobs until stopped</td></tr>
+      <tr><td><code>runs --container &lt;tag&gt;</code></td><td>Extraction runs with decisions and rejections; <code>--document</code></td></tr>
+      <tr><td><code>profile --container &lt;tag&gt;</code></td><td>The cached profile; <code>--rebuild</code> to build now</td></tr>
+      <tr><td><code>backfill --container &lt;tag&gt;</code></td><td>Embed memories and chunks that have no vectors yet</td></tr>
+      <tr><td><code>seed --container &lt;tag&gt; --count &lt;n&gt;</code></td><td>Synthetic memories with real structure, to explore the dashboard</td></tr>
+      <tr><td><code>providers check</code> · <code>providers env</code></td><td>Call the configured endpoints · list every variable</td></tr>
+      <tr><td><code>serve</code></td><td>HTTP server (REST + SSE) and, with a model, the worker; <code>--port</code>, <code>--host</code>, <code>--dashboard</code></td></tr>
+      <tr><td><code>mcp --container &lt;tag&gt;</code></td><td>MCP server over stdio for chat clients; <code>--url</code>, <code>--read-only</code></td></tr>
+      <tr><td><code>keys create --name &lt;name&gt;</code></td><td>Create an API key (<code>--container</code> to scope); shown once</td></tr>
+      <tr><td><code>keys list</code> · <code>keys revoke &lt;keyId&gt;</code></td><td>List or revoke keys (revoking also ends sessions)</td></tr>
+      <tr><td><code>eval</code></td><td>Run the eval suite; <code>--live</code>, <code>--store</code>, <code>--case</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="recipes">Recipes</h2>
+<div class="code"><pre><span class="c"># Ingest a conversation and extract it now, rather than waiting for the session to go quiet</span>
+memnest ingest chat.json --container user:123 --custom-id chat-42 --extraction instant
+memnest jobs run
+
+<span class="c"># What does it believe, and why did it answer that?</span>
+memnest profile --container user:123
+memnest search "which database?" --container user:123 --budget 200
+
+<span class="c"># Fix a wrong fact, keeping the history</span>
+memnest memories add "The user moved to Berlin." --supersedes mem_0042 --container user:123
+
+<span class="c"># Explore the dashboard with 10,000 synthetic memories</span>
+memnest seed --container demo:big --count 10000 &amp;&amp; memnest serve --dashboard apps/dashboard/dist</pre></div>
+
+<h2 id="json">Scripting</h2>
+<div class="code"><pre>memnest search "database" --container user:123 --json | jq '.memories[].memory.content'
+memnest memories list --container user:123 --json | jq -r '.[] | select(.isLatest) | .id'</pre></div>

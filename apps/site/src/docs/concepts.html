@@ -1,0 +1,41 @@
+<dl class="gloss">
+  <dt>container tag</dt><dd>Whose memory this is: <code>user:123</code>, <code>customer:acme</code>, <code>project:billing</code>. A hard boundary — nothing crosses between containers, in the engine or over HTTP. Every call takes a scope built with <code>scopeOf(tag)</code>.</dd>
+  <dt>document</dt><dd>Raw input: a conversation (<code>{ role, content }</code> turns), markdown or text. Split into <strong>chunks</strong>, searchable immediately.</dd>
+  <dt>customId</dt><dd>A stable id for a document. Re-sending with the same id makes a new version, and in batched mode documents sharing it form one session.</dd>
+  <dt>memory</dt><dd>One atomic, self-contained fact, with a <strong>kind</strong> (<code>fact</code>, <code>preference</code>, <code>episode</code>), a confidence, an optional expiry, and links to the documents it came from.</dd>
+  <dt>latest / not-latest</dt><dd>When a memory is updated the new version is latest; the old one is kept, and no longer served.</dd>
+  <dt>forgotten</dt><dd>A soft delete by a person. Out of search and profiles at once, still visible in history for audit.</dd>
+  <dt>expiry</dt><dd><code>validUntil</code>. "The meeting is at 3pm today" stops being served once it passes, without anyone deleting it.</dd>
+  <dt>reinforcement</dt><dd>A fact stated twice is not stored twice: the existing memory's <code>reinforcementCount</code> grows and it gains another source.</dd>
+  <dt>provenance</dt><dd>Every memory points back to the document and extraction run that produced it. Stores refuse a memory without one, direct writes included.</dd>
+  <dt>extraction run</dt><dd>The log of one extraction job: candidates, decisions with reasons, and rejections (redacted). <code>memnest runs</code> shows them.</dd>
+  <dt>trace</dt><dd>Returned by every search: each candidate's lexical and vector rank, fused score, token cost, and whether it was included or why not.</dd>
+  <dt>profile</dt><dd>A cached, prompt-ready summary of a container: durable facts plus recent activity, each line citing the memories it states.</dd>
+</dl>
+
+<h2 id="states">A memory's states</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>State</th><th>Served by search?</th><th>Visible to a person?</th><th>How it gets there</th></tr></thead>
+    <tbody>
+      <tr><td>latest</td><td>Yes</td><td>Yes</td><td>Written, and nothing has replaced it</td></tr>
+      <tr><td>not-latest</td><td>No</td><td>Yes, as history</td><td>A newer version supersedes it</td></tr>
+      <tr><td>forgotten</td><td>No</td><td>Yes, as a hollow node</td><td><code>forget()</code>, by a person</td></tr>
+      <tr><td>expired</td><td>No</td><td>Yes</td><td>Its <code>validUntil</code> has passed</td></tr>
+      <tr><td>erased</td><td>No</td><td>No</td><td><code>deleteContainer()</code>, a hard delete</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="resolution">How a new fact is resolved</h2>
+<p>For each candidate, Memnest retrieves up to 10 similar current memories and then decides. Identical text is caught without a model call, and a candidate with nothing similar is written as <code>new</code> without one either.</p>
+<div class="relations">
+  <div class="rel"><span class="pill new">new</span><p>Nothing similar exists.</p><span class="eg">"Priya wants incident updates by email."</span></div>
+  <div class="rel"><span class="pill">duplicate</span><p>The same fact again: reinforce, don't duplicate.</p><span class="eg">"The team is still six engineers."</span></div>
+  <div class="rel"><span class="pill updates">updates</span><p>A change: new version served, old one kept.</p><span class="eg">Postgres → MySQL</span></div>
+  <div class="rel"><span class="pill extends">extends</span><p>More detail about the same thing.</p><span class="eg">"…and it runs in eu-west-1."</span></div>
+</div>
+<p class="callout">If the model's answer is invalid, Memnest retries once and then writes the fact as <code>new</code>. A missed relation can be repaired later; a wrong <code>updates</code> would hide a true fact.</p>
+
+<h2 id="errors">Errors</h2>
+<p>Every error is a <code>MemnestError</code> with a <code>code</code>: <code>validation</code>, <code>not_found</code>, <code>scope_violation</code>, <code>provenance</code>, <code>configuration</code>, <code>provider</code>, <code>unauthorized</code>. Over HTTP, asking for another container's row is <code>403</code> and a row that does not exist is <code>404</code>, so another container's ids behave exactly like ids that were never there.</p>

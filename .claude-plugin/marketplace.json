@@ -1,0 +1,11 @@
+{
+  "name": "memnest",
+  "owner": { "name": "Memnest", "url": "https://github.com/anidoesdev/MemNest" },
+  "plugins": [
+    {
+      "name": "memnest",
+      "source": "./plugins/memnest",
+      "description": "Long-term memory for your chats: recall, remember, correct. Backed by a local Memnest database."
+    }
+  ]
+}

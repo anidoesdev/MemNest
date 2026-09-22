@@ -1,0 +1,48 @@
+<p>Run Memnest as a service when several clients, services or people share one memory, or when you want the dashboard to review what agents believe.</p>
+
+<h2 id="docker">With Docker</h2>
+<ol class="steps">
+  <li><strong>Start Postgres + pgvector and the server</strong>
+    <div class="code"><pre>git clone https://github.com/anidoesdev/MemNest.git &amp;&amp; cd MemNest
+docker compose up -d        <span class="c"># API and dashboard on http://localhost:8787</span></pre></div>
+  </li>
+  <li><strong>Create an API key</strong> (printed once; only its hash is stored)
+    <div class="code"><pre>docker compose exec server memnest keys create --name admin
+docker compose exec server memnest keys create --name acme-bot --container customer:acme   <span class="c"># scoped</span></pre></div>
+  </li>
+  <li><strong>Open the dashboard</strong> at <code>http://localhost:8787</code> and sign in with the key. A scoped key opens its container directly.</li>
+</ol>
+<p>Model providers are read from your shell or an <code>.env</code> file next to <code>docker-compose.yml</code>. For Ollama on the host, set <code>MEMNEST_BASE_URL=http://host.docker.internal:11434</code>.</p>
+
+<h2 id="without">Without Docker</h2>
+<div class="code"><pre>npm install -g @memnest/cli
+export MEMNEST_DATABASE_URL=postgres://memnest:memnest@localhost:5432/memnest   <span class="c"># or omit for SQLite</span>
+memnest migrate
+memnest keys create --name admin
+memnest serve --port 8787</pre></div>
+<p>To serve the dashboard too, build the repository and pass <code>--dashboard apps/dashboard/dist</code> (or set <code>MEMNEST_DASHBOARD_DIR</code>).</p>
+
+<h2 id="worker">The extraction worker</h2>
+<p><code>memnest serve</code> also runs the worker when a completion provider is configured. <code>MEMNEST_WORKER</code> controls it: <code>auto</code> (default), <code>on</code> (fail if no model), <code>off</code> (run <code>memnest worker</code> elsewhere).</p>
+<p class="callout warn">Run one extraction worker per container shard for now. Job claims are safe across workers, but session grouping is not yet locked, so two workers holding jobs for different versions of the same session could both extract it.</p>
+
+<h2 id="dashboard">The dashboard</h2>
+<p>Five views over one container, for a person rather than a model:</p>
+<dl class="gloss">
+  <dt>Graph</dt><dd>Every memory on a canvas. Colour is kind, size is reinforcement; superseded memories are faded, forgotten ones hollow. Arrows are <code>updates</code>, dashed lines <code>extends</code>. Above 2,000 matching memories it groups them into topic clusters; clicking one, or filtering, expands it. It stays responsive at 10,000.</dd>
+  <dt>Lineage</dt><dd>One memory: what it replaced, what extends it, and the documents it came from, as a layered graph.</dd>
+  <dt>Retrieval trace</dt><dd>Run a query with a budget and see every candidate: ranks, fused score, tokens, included or why not, with the budget line drawn across the list.</dd>
+  <dt>Timeline</dt><dd>A topic's facts over time, each change dated, so you can see when a belief switched.</dd>
+  <dt>Detail</dt><dd>Content, kind, confidence, validity, version history, sources with their text, and <strong>Forget</strong> with confirmation. Nothing can be edited: a wrong memory is forgotten, not rewritten.</dd>
+</dl>
+<p>The dashboard signs in by exchanging an API key for an <code>HttpOnly</code>, <code>SameSite=Strict</code> session cookie; revoking the key ends its sessions. It is served from the API's own origin, and there is no CORS, so it cannot be hosted elsewhere.</p>
+
+<h2 id="postgres">Postgres notes</h2>
+<ul>
+  <li>Everything lives in its own schema (<code>memnest</code>, or <code>MEMNEST_PG_SCHEMA</code>), migrated under an advisory lock.</li>
+  <li>Full text is a generated <code>tsvector</code> column with a GIN index; vectors use pgvector with a partial HNSW index per embedding dimension, so one database can host containers embedded by different providers.</li>
+  <li>Jobs are claimed with <code>FOR UPDATE SKIP LOCKED</code>, so workers can share one database.</li>
+</ul>
+
+<h2 id="upgrade">Upgrading</h2>
+<p>Run <code>memnest migrate</code> after upgrading. Migrations are additive and run under a lock, so it is safe to run on start.</p>

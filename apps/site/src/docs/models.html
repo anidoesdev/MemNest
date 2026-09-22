@@ -1,0 +1,68 @@
+<p>Memnest uses models for two jobs, and they can come from different providers. Neither is required to start.</p>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Model</th><th>Used for</th><th>Without it</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Completion</strong></td><td>Extracting facts from conversations, resolving them against what is known, writing profiles, optional reranking</td><td>Direct writes and keyword search still work; raw text is stored but no facts are extracted</td></tr>
+      <tr><td><strong>Embedding</strong></td><td>Semantic recall: finding a fact worded differently from the question</td><td>Search runs on keywords only and the trace says <code>lexical-only</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="configure">Configure</h2>
+<div class="tabs" role="tablist" data-tabs aria-label="Provider">
+  <button role="tab" id="p-ollama" aria-controls="pp-ollama" aria-selected="true" type="button">Ollama</button>
+  <button role="tab" id="p-openai" aria-controls="pp-openai" type="button">OpenAI</button>
+  <button role="tab" id="p-compat" aria-controls="pp-compat" type="button">Any OpenAI-compatible</button>
+  <button role="tab" id="p-mixed" aria-controls="pp-mixed" type="button">Mixed</button>
+</div>
+<div id="pp-ollama" role="tabpanel" aria-labelledby="p-ollama" class="panel">
+  <div class="code"><pre>export MEMNEST_PROVIDER=ollama
+export MEMNEST_COMPLETION_MODEL=llama3.1:8b     <span class="c"># embeddings default to nomic-embed-text</span></pre></div>
+  <p>Everything stays on your machine. Memnest uses Ollama's native API, which constrains output to the JSON schema, so extraction is more reliable than through its <code>/v1</code> route.</p>
+</div>
+<div id="pp-openai" role="tabpanel" aria-labelledby="p-openai" class="panel" hidden>
+  <div class="code"><pre>export OPENAI_API_KEY=sk-...
+export MEMNEST_COMPLETION_MODEL=gpt-4.1-mini    <span class="c"># embeddings default to text-embedding-3-small</span></pre></div>
+</div>
+<div id="pp-compat" role="tabpanel" aria-labelledby="p-compat" class="panel" hidden>
+  <div class="code"><pre>export MEMNEST_BASE_URL=http://localhost:1234/v1   <span class="c"># LM Studio, vLLM, Groq, OpenRouter, Together…</span>
+export MEMNEST_API_KEY=...                          <span class="c"># if the endpoint needs one</span>
+export MEMNEST_COMPLETION_MODEL=my-model</pre></div>
+  <p>If the endpoint supports JSON mode but not strict schemas, set <code>MEMNEST_STRUCTURED_OUTPUT=json_object</code>.</p>
+</div>
+<div id="pp-mixed" role="tabpanel" aria-labelledby="p-mixed" class="panel" hidden>
+  <div class="code"><pre><span class="c"># A hosted model for completions, local embeddings that never leave the machine</span>
+export MEMNEST_BASE_URL=https://api.groq.com/openai/v1 MEMNEST_API_KEY=...
+export MEMNEST_COMPLETION_MODEL=my-model
+export MEMNEST_EMBEDDING_PROVIDER=ollama MEMNEST_EMBEDDING_MODEL=nomic-embed-text</pre></div>
+  <p>Voyage is also supported for embeddings (<code>VOYAGE_API_KEY</code>).</p>
+</div>
+
+<div class="code"><pre>memnest providers check   <span class="c"># calls both endpoints: structured output and embedding dimensions</span>
+memnest providers env     <span class="c"># every variable Memnest reads</span></pre></div>
+
+<h2 id="code">In code</h2>
+<div class="code"><pre><span class="k">import</span> { ollamaCompletion, openAICompatibleEmbeddings } <span class="k">from</span> <span class="s">'@memnest/providers'</span>;
+
+<span class="k">const</span> memnest = createMemnest({
+  store, queue: store.jobQueue(),
+  completion: ollamaCompletion({ model: <span class="s">'llama3.1:8b'</span> }),
+  embedder: openAICompatibleEmbeddings({ baseURL: <span class="s">'http://localhost:1234/v1'</span>, model: <span class="s">'my-embed'</span>, dimensions: <span class="s">1024</span> }),
+});</pre></div>
+<p>Providers are a port, not a dependency: anything implementing <code>CompletionProvider</code> or <code>EmbeddingProvider</code> works, including your own wrapper around a model Memnest has never heard of.</p>
+
+<h2 id="choosing">Choosing a completion model</h2>
+<p>Extraction and resolution ask for small, strictly-shaped JSON, not prose. A local 8B model handles it. What matters is reliable structured output: schema-constrained decoding (Ollama's native API, OpenAI's strict mode) beats a larger model that returns malformed JSON. Malformed output is retried once and then treated as <code>new</code>, so the graph is never corrupted, but relations get missed.</p>
+
+<h2 id="dimension-lock">The dimension lock</h2>
+<p>The first embedding write records the provider id and dimensions on the container. Writes or queries from a different provider fail with an error naming both, rather than silently comparing incompatible vectors. To change embedding model, use a new container, or re-embed everything:</p>
+<div class="code"><pre>memnest backfill --container user:123   <span class="c"># embeds memories and chunks that have no vectors yet</span></pre></div>
+
+<h2 id="costs">Cost and privacy</h2>
+<ul>
+  <li><strong>One call per session, not per message.</strong> Batched extraction waits for a conversation to go quiet, then runs once.</li>
+  <li><strong>Resolution calls are skipped</strong> when nothing similar is stored, or the text matches exactly.</li>
+  <li><strong>Recall costs nothing</strong> unless you switch reranking on: retrieval, fusion and packing are all local.</li>
+  <li><strong>Fully local is a supported setup</strong>, not an afterthought: Ollama plus SQLite or Postgres means no data leaves your infrastructure.</li>
+</ul>

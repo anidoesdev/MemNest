@@ -1,0 +1,49 @@
+<h2 id="memory">Memories</h2>
+<details class="faq"><summary>I ingested a conversation but no memories appeared</summary><div>
+  <p>Extraction needs a completion model and a worker. Check <code>memnest providers check</code>, then run <code>memnest worker</code> (or <code>memnest serve</code> with <code>MEMNEST_WORKER=auto</code>).</p>
+  <p>In <code>batched</code> mode it also waits for the session to be quiet for 30 seconds. To see it immediately, ingest with <code>--extraction instant</code> and run <code>memnest jobs run</code>.</p>
+  <p>If the job ran but wrote nothing, <code>memnest runs --container &lt;tag&gt;</code> lists each rejected candidate with its reason: usually <code>low-confidence</code> (small talk) or <code>unresolved-pronoun</code>.</p>
+</div></details>
+<details class="faq"><summary>The same fact was stored twice</summary><div>
+  <p>Resolution needs a completion model; without one, only exact text matches are caught. Check <code>memnest runs</code>: decisions marked <code>no-neighbors</code> mean nothing similar was retrieved, which also happens when the two wordings share no keywords and the container has no embeddings. Run <code>memnest backfill --container &lt;tag&gt;</code>, or use Postgres for vector search.</p>
+</div></details>
+<details class="faq"><summary>An old fact is still being served</summary><div>
+  <p>Look at the trace: if the old memory is <code>included</code> rather than <code>not-latest</code>, no <code>updates</code> relation was recorded, so Memnest does not know they are the same fact. Link them with a direct write (<code>--supersedes</code>), or forget the old one.</p>
+</div></details>
+
+<h2 id="search">Search</h2>
+<details class="faq"><summary>The trace says <code>lexical-only</code></summary><div>
+  <p>Read the rest of <code>degraded</code>. SQLite has no vector search, so use Postgres + pgvector for semantic recall. <code>no embedding provider configured</code>: set <code>MEMNEST_EMBEDDING_PROVIDER</code>. <code>container has no embeddings yet</code>: run <code>memnest backfill --container &lt;tag&gt;</code>, which embeds what was written before the provider existed.</p>
+</div></details>
+<details class="faq"><summary>An error names two embedding providers or dimensions</summary><div>
+  <p>The dimension lock. A container records the first embedding provider and dimension it saw and refuses others, so incompatible vectors are never compared. Go back to the original model, or use a new container.</p>
+</div></details>
+<details class="faq"><summary>Recall returns less than the budget allows</summary><div>
+  <p>Vector hits at or below <code>minVectorScore</code> (default 0) are dropped, because vector search returns something for every query. Candidates also have to survive the latest/forgotten/expired filter. The trace lists everything that was considered.</p>
+</div></details>
+
+<h2 id="clients">Chat clients</h2>
+<details class="faq"><summary>The MCP server does not appear in my client</summary><div>
+  <p>Run the exact command from your config in a terminal. It should print <code>Memnest MCP server on stdio: …</code> to stderr and then wait. A missing <code>--container</code> (or <code>MEMNEST_CONTAINER</code>) is the usual cause.</p>
+  <p>Clients show a server's stderr in their MCP logs; check there first. In Claude Desktop, quit from the system tray and reopen: closing the window does not reload the config.</p>
+</div></details>
+<details class="faq"><summary>It works in a terminal but not in Claude Desktop (Windows)</summary><div>
+  <p>Desktop apps do not always inherit your <code>PATH</code>, so <code>npx</code> may not resolve. Use the full path to Node as <code>command</code>, with the CLI's path as the first argument, and double every backslash in JSON.</p>
+</div></details>
+<details class="faq"><summary>The assistant remembers nothing between chats</summary><div>
+  <p>Check both clients point at the same <code>--container</code> and the same database. <code>memnest memories list --container &lt;tag&gt; --db ~/.memnest/memnest.db</code> shows what is really stored. Also confirm the client is actually calling <code>recall</code>: most show tool calls in the conversation.</p>
+</div></details>
+
+<h2 id="running">Running it</h2>
+<details class="faq"><summary>The store refuses to open: pending migrations</summary><div>
+  <p>Run <code>memnest migrate</code>, or pass <code>autoMigrate: true</code> to <code>createSqliteStore</code>. <code>memnest mcp</code> migrates its own SQLite database. Upgrading from <code>0.1.x</code> needs a migration for the API key and session tables.</p>
+</div></details>
+<details class="faq"><summary>An extraction job failed</summary><div>
+  <p>The document is not lost: its chunks stay searchable. Find it with <code>memnest jobs --container &lt;tag&gt; --status failed</code> and requeue it with <code>memnest jobs retry &lt;jobId&gt;</code>. Permanent errors (a bad configuration) fail immediately rather than retrying; the run records the message.</p>
+</div></details>
+<details class="faq"><summary>The dashboard will not sign in</summary><div>
+  <p>The session cookie is <code>SameSite=Strict</code> and there is no CORS, so the dashboard must be served by the server itself: <code>memnest serve --dashboard apps/dashboard/dist</code>. In development, the Vite dev server proxies <code>/v1</code> to it.</p>
+</div></details>
+
+<h2 id="help">Still stuck</h2>
+<p>Open an issue with what you ran, what you expected, and the output of <code>memnest providers check</code> plus the relevant <code>memnest runs</code> or trace: <a href="https://github.com/anidoesdev/MemNest/issues" rel="noopener">github.com/anidoesdev/MemNest/issues</a>.</p>

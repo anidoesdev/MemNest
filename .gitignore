@@ -11,3 +11,4 @@ coverage/
 .env.*
 apps/dashboard/e2e/out/
 .vercel/
+apps/site/docs/

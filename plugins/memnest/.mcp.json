@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "memnest": {
+      "command": "npx",
+      "args": ["-y", "@memnest/cli", "mcp"],
+      "env": {
+        "MEMNEST_CONTAINER": "${MEMNEST_CONTAINER:-user:me}",
+        "MEMNEST_DB": "${MEMNEST_DB:-}",
+        "MEMNEST_SERVER_URL": "${MEMNEST_SERVER_URL:-}",
+        "MEMNEST_KEY": "${MEMNEST_KEY:-}"
+      }
+    }
+  }
+}

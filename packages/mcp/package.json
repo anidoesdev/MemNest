@@ -1,14 +1,14 @@
 {
-  "name": "@memnest/cli",
-  "version": "0.2.0",
-  "description": "The memnest command line: migrate, ingest, search, seed, eval.",
+  "name": "@memnest/mcp",
+  "version": "0.0.0",
+  "description": "MCP server for Memnest: give any MCP client (Claude, Cursor, VS Code, agents) long-term memory over one container.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/anidoesdev/MemNest.git",
-    "directory": "packages/cli"
+    "directory": "packages/mcp"
   },
-  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/anidoesdev/MemNest/tree/main/packages/mcp#readme",
   "bugs": {
     "url": "https://github.com/anidoesdev/MemNest/issues"
   },
@@ -17,11 +17,9 @@
     "memory",
     "ai-agents",
     "llm",
-    "rag",
-    "embeddings",
-    "knowledge-graph",
-    "cli",
-    "mcp"
+    "mcp",
+    "model-context-protocol",
+    "mcp-server"
   ],
   "publishConfig": {
     "access": "public"
@@ -30,9 +28,6 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
-  },
-  "bin": {
-    "memnest": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -48,6 +43,16 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./stdio": {
+      "import": {
+        "types": "./dist/stdio.d.ts",
+        "default": "./dist/stdio.js"
+      },
+      "require": {
+        "types": "./dist/stdio.d.cts",
+        "default": "./dist/stdio.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -60,16 +65,13 @@
     "lint:pkg": "publint && attw --pack . --profile node16"
   },
   "dependencies": {
-    "@memnest/client": "workspace:^",
     "@memnest/core": "workspace:^",
-    "@memnest/evals": "workspace:^",
-    "@memnest/mcp": "workspace:^",
-    "@memnest/providers": "workspace:^",
-    "@memnest/server": "workspace:^",
-    "@memnest/store-postgres": "workspace:^",
-    "@memnest/store-sqlite": "workspace:^"
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@memnest/client": "workspace:*",
+    "@memnest/server": "workspace:*",
     "@modelcontextprotocol/client": "^2.0.0"
   }
 }

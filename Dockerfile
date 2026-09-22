@@ -12,7 +12,7 @@ COPY apps ./apps
 RUN pnpm install --frozen-lockfile
 RUN pnpm turbo run build --filter=@memnest/cli... --filter=@memnest/dashboard...
 # Pack exactly what npm would publish, so the image runs the same artifacts users install.
-RUN mkdir /tarballs && for dir in core providers store-sqlite store-postgres evals server cli; do \
+RUN mkdir /tarballs && for dir in core providers store-sqlite store-postgres evals server client mcp cli; do \
       (cd "packages/$dir" && pnpm pack --pack-destination /tarballs); \
     done
 

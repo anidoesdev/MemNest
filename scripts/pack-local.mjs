@@ -5,7 +5,7 @@
 // Run before every release: `pnpm pack:local`.
 
 import { execSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
@@ -66,6 +66,8 @@ import { createMemnestClient, MemnestHttpError } from '@memnest/client';
 import { createInMemoryAuthStore } from '@memnest/core';
 import { computeLayout, createWorkspace, clusterNodes } from '@memnest/ui-core';
 import { useController, GraphCanvas } from '@memnest/ui-react';
+import { createMemnestMcpServer, PROFILE_RESOURCE_URI } from '@memnest/mcp';
+import { serveMemnestStdio } from '@memnest/mcp/stdio';
 
 if (ollamaCompletion({ model: 'm' }).id !== 'ollama:m' || openAICompatibleEmbeddings({ baseURL: 'http://x', model: 'e', dimensions: 3 }).dimensions !== 3) throw new Error('ESM smoke: providers');
 if (providersFromEnv({}).completion) throw new Error('ESM smoke: providersFromEnv');
@@ -101,6 +103,8 @@ if (typeof run !== 'function') throw new Error('ESM smoke: cli export missing');
   workspace.dispose();
 }
 if (typeof createPostgresStore !== 'function' || !PG_MIGRATIONS.length) throw new Error('ESM smoke: store-postgres exports');
+const mcpServer = createMemnestMcpServer({ memnest: createMemnest({ store: createInMemoryStore() }), containerTag: 'user:1' });
+if (typeof mcpServer.connect !== 'function' || PROFILE_RESOURCE_URI !== 'memnest://profile' || typeof serveMemnestStdio !== 'function') throw new Error('ESM smoke: mcp');
 const evalReport = await runEvals({ mode: 'mock', filter: 'real-transcript' });
 if (evalReport.passed !== 1 || !EVAL_CASES.length) throw new Error('ESM smoke: evals');
 console.log('ESM smoke ok');
@@ -119,6 +123,9 @@ const { createServer, createKeyring } = require('@memnest/server');
 const { createMemnestClient } = require('@memnest/client');
 const { forceLayout, layeredLayout } = require('@memnest/ui-core');
 const { useController } = require('@memnest/ui-react');
+const { createMemnestMcpServer } = require('@memnest/mcp');
+const { serveMemnestStdio } = require('@memnest/mcp/stdio');
+if (typeof createMemnestMcpServer !== 'function' || typeof serveMemnestStdio !== 'function') throw new Error('CJS smoke: mcp');
 if (forceLayout([{ id: 'a' }], []).size !== 1 || layeredLayout([{ id: 'a' }], []).size !== 1 || typeof useController !== 'function') throw new Error('CJS smoke: ui-core/ui-react');
 if (typeof createServer !== 'function' || typeof createKeyring !== 'function' || typeof createMemnestClient !== 'function') throw new Error('CJS smoke: server/client');
 if (typeof createPostgresStore !== 'function') throw new Error('CJS smoke: store-postgres');
@@ -149,6 +156,8 @@ import { createMemnestClient, type MemnestClient } from '@memnest/client';
 import { createInMemoryAuthStore, type MemnestApi } from '@memnest/core';
 import { createGraphController, type GraphState, type Workspace } from '@memnest/ui-core';
 import { useController, type GraphCanvasProps } from '@memnest/ui-react';
+import { createMemnestMcpServer, type MemnestMcpOptions } from '@memnest/mcp';
+import { serveMemnestStdio, type MemnestStdioHandle, type ServeMemnestStdioOptions } from '@memnest/mcp/stdio';
 const graphController = createGraphController({ client: createMemnest({ store: createInMemoryStore() }), containerTag: 'user:1', autoload: false });
 const graphState: GraphState = graphController.getState();
 type CanvasProps = GraphCanvasProps;
@@ -158,6 +167,9 @@ const route: RouteId = 'search';
 const client: MemnestClient = createMemnestClient({ baseUrl: 'http://localhost:8787', apiKey: 'mnk_x' });
 // D2: embedded and remote are interchangeable where the API is expected.
 const apis: MemnestApi[] = [client, createMemnest({ store: createInMemoryStore() })];
+const mcpOptions: MemnestMcpOptions = { memnest: client, containerTag: 'user:1', readOnly: true };
+const mcpServer = createMemnestMcpServer(mcpOptions);
+const serveStdio: (options: ServeMemnestStdioOptions) => MemnestStdioHandle = serveMemnestStdio;
 const pgStore: Promise<PostgresStore> = createPostgresStore({ connectionString: 'postgres://localhost/none' });
 
 const configured: ConfiguredProviders = { summary: [], completion: openAICompatibleCompletion({ model: 'm', baseURL: 'http://x' }) };
@@ -166,7 +178,7 @@ const memnest: Memnest = createMemnest({ store });
 const response: Promise<SearchResponse> = memnest.search('q', scopeOf('user:1'));
 const memories: Promise<Memory[]> = memnest.listMemories(scopeOf('user:1'));
 const pragma: unknown = store.db.pragma('journal_mode');
-export { createInMemoryStore, run, response, memories, pragma, configured, pgStore, server, route, apis, graphState, hook };
+export { createInMemoryStore, mcpServer, serveStdio, run, response, memories, pragma, configured, pgStore, server, route, apis, graphState, hook };
 export type { CanvasProps, Workspace };
 `,
 );
@@ -185,6 +197,8 @@ const tsconfig = (resolution) =>
     files: ['smoke.ts'],
   });
 
+copyFileSync(join(root, 'scripts', 'mcp-smoke.mjs'), join(consumer, 'mcp-smoke.mjs'));
+
 sh('npm install --no-audit --no-fund', consumer);
 sh('node smoke.mjs', consumer);
 sh('node smoke.cjs', consumer);
@@ -198,5 +212,7 @@ sh('npm exec -- memnest search "Stripe Postgres" --container user:smoke --budget
 sh('npm exec -- memnest keys create --name smoke --container user:smoke --db smoke.db', consumer);
 sh('npm exec -- memnest keys list --db smoke.db', consumer);
 sh('npm exec -- memnest eval --store sqlite', consumer);
+// `memnest mcp` answers a client over stdio and exits when the client closes stdin.
+sh('node mcp-smoke.mjs', consumer);
 
 console.log('\npack:local passed: tarballs install and every entry point works outside the workspace.');

@@ -1,0 +1,50 @@
+<p>Memory is only trustworthy if you can look at it and fix it. Everything here works from your chat, from the command line, and from the dashboard.</p>
+
+<h2 id="see">See what is remembered</h2>
+<div class="tabs" role="tablist" data-tabs aria-label="How to look">
+  <button role="tab" id="s-chat" aria-controls="sp-chat" aria-selected="true" type="button">In chat</button>
+  <button role="tab" id="s-cli" aria-controls="sp-cli" type="button">Command line</button>
+  <button role="tab" id="s-dash" aria-controls="sp-dash" type="button">Dashboard</button>
+</div>
+<div id="sp-chat" role="tabpanel" aria-labelledby="s-chat" class="panel">
+  <p>With the Claude Code plugin, <code>/memnest:memories</code> lists what is stored, with each memory's id. In any MCP client, asking "what do you remember about me?" calls <code>profile</code>, and "what do you know about my database setup?" calls <code>recall</code>.</p>
+</div>
+<div id="sp-cli" role="tabpanel" aria-labelledby="s-cli" class="panel" hidden>
+  <div class="code"><pre>memnest memories list --container user:me              <span class="c"># current memories</span>
+memnest memories list --all --container user:me       <span class="c"># including superseded and forgotten</span>
+memnest profile --container user:me
+memnest lineage &lt;id&gt; --container user:me              <span class="c"># where one came from</span>
+memnest runs --container user:me                      <span class="c"># what was extracted, and what was rejected</span></pre></div>
+  <p>Add <code>--db ~/.memnest/memnest.db</code> if you are looking at the database your chat client uses.</p>
+</div>
+<div id="sp-dash" role="tabpanel" aria-labelledby="s-dash" class="panel" hidden>
+  <p>The <a href="/docs/server">dashboard</a> shows the memory graph, one memory's lineage, the retrieval trace for any query, and a topic's history over time. Forgetting is two clicks, with confirmation.</p>
+</div>
+
+<h2 id="fix">Correct something</h2>
+<p>Which action you want depends on what happened to the fact:</p>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Situation</th><th>Do this</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>It was true, now it isn't ("I moved to Berlin")</td><td>Store the new fact with <code>supersedes</code> set to the old one's id</td><td>The new version is served; the old is kept, linked, and dated</td></tr>
+      <tr><td>It was never true (the assistant misread you)</td><td><code>forget</code> it</td><td>Out of search and profiles at once, kept for audit</td></tr>
+      <tr><td>It's true but incomplete</td><td>Store the extra detail with <code>extends</code></td><td>Both stay current, linked</td></tr>
+      <tr><td>A whole conversation shouldn't have been stored</td><td>Delete the document</td><td>Its text and chunks are erased; memories keep a traceable source</td></tr>
+      <tr><td>Erase everything for this person or customer</td><td>Delete the container</td><td>Hard delete of documents, chunks, memories and vectors</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="code"><pre>memnest forget &lt;id&gt; --container user:me
+memnest memories add "The user lives in Berlin." --supersedes &lt;old-id&gt; --container user:me</pre></div>
+<p class="callout">Memories are never edited in place. Every correction is itself a recorded event, which is what makes the history worth trusting.</p>
+
+<h2 id="erase">Erase everything</h2>
+<p>One call removes a container and everything in it. It is the path for a deletion request.</p>
+<div class="code"><pre><span class="k">await</span> memnest.deleteContainer(scopeOf(<span class="s">'user:me'</span>));
+<span class="c">// or over HTTP:</span>
+curl -X DELETE localhost:8787/v1/containers/user:me -H <span class="s">"Authorization: Bearer $MEMNEST_KEY"</span></pre></div>
+<p>SQLite runs with <code>secure_delete</code>, so erased content leaves no residue in the file. A test greps the raw database, its write-ahead log and shared memory to prove it.</p>
+
+<h2 id="expiry">Let facts expire</h2>
+<p>A fact that is only true for a while can carry <code>validUntil</code>. It stops being served the moment it passes, and the trace reports it as <code>expired</code> rather than silently dropping it. Extraction sets this itself for things like "the review is on 24 June at 15:00".</p>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Install Memnest in your assistant</title>
+    <meta name="description" content="Add long-term memory to Claude Code, Claude Desktop, Cursor, VS Code or any MCP client. One-click install links and copy-paste config." />
+    <meta property="og:title" content="Install Memnest in your assistant" />
+    <meta property="og:description" content="One click for Cursor and VS Code, one command for Claude Code. Your assistant remembers you between conversations, and you stay in control of what it keeps." />
+    <meta property="og:image" content="/og.png" />
+    <meta name="theme-color" content="#13201a" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script src="/theme.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" />
+    <script type="module" src="/src/plugins.ts"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="bar">
+      <div class="wrap wide">
+        <a class="brand" href="/" aria-label="Memnest home">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17c4 7 22 7 26 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><path d="M5.5 20.5c5 4 16 4 21 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5" /><ellipse cx="12.5" cy="13" rx="4" ry="5" fill="#1f7680" /><ellipse cx="19.5" cy="13.5" rx="4" ry="5" fill="#6cc6ca" opacity=".55" /></svg>
+          Memnest
+        </a>
+        <nav aria-label="Main">
+          <a href="/docs/">Docs</a>
+          <a href="/plugins" aria-current="page">Plugins</a>
+          <a href="/#preview">Live preview</a>
+        </nav>
+        <div class="bar-actions">
+          <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" stroke-linecap="round" /></svg>
+          </button>
+          <a class="gh" href="https://github.com/anidoesdev/MemNest" rel="noopener">GitHub ↗</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="wrap">
+      <div class="guide-hero">
+        <div class="eyebrow">Install</div>
+        <h1>Give your assistant a memory</h1>
+        <p class="lede">Memnest connects over MCP, the protocol assistants use to reach outside tools. Pick your client below. Memories are stored on your own machine, and you can read, correct or delete them at any time.</p>
+      </div>
+
+      <div class="container-picker">
+        <label for="container-tag">Whose memory is this?</label>
+        <input type="text" id="container-tag" value="user:me" spellcheck="false" autocomplete="off" aria-describedby="container-help" />
+        <span id="container-help">A container tag, <code>kind:id</code>. Everything below updates to match. Use one tag for one person or project; clients sharing a tag share one memory.</span>
+      </div>
+
+      <section class="install-grid">
+        <article class="install-card">
+          <header><h2>Claude Code</h2><span class="tag-line">Plugin, with slash commands</span></header>
+          <p>The plugin adds the memory tools plus <code>/memnest:memories</code>, <code>/memnest:remember</code> and <code>/memnest:forget</code>. Run these in Claude Code:</p>
+          <div class="code"><pre data-snippet="plugin">/plugin marketplace add anidoesdev/MemNest
+/plugin install memnest@memnest</pre></div>
+          <p class="or">or just the server:</p>
+          <div class="code"><pre data-snippet="claude-code">claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
+        </article>
+
+        <article class="install-card">
+          <header><h2>Cursor</h2><span class="tag-line">One click</span></header>
+          <p>Opens Cursor and asks you to confirm the server.</p>
+          <p><a class="btn primary" data-link="cursor" href="#">Add to Cursor</a></p>
+          <p class="or">or put this in <code>.cursor/mcp.json</code> (project) or <code>~/.cursor/mcp.json</code> (everywhere):</p>
+          <div class="code"><pre data-snippet="cursor"></pre></div>
+        </article>
+
+        <article class="install-card">
+          <header><h2>VS Code</h2><span class="tag-line">One click</span></header>
+          <p>Opens VS Code and asks you to confirm the server.</p>
+          <p><a class="btn primary" data-link="vscode" href="#">Add to VS Code</a> <a class="btn ghost" data-link="vscodeInsiders" href="#">Insiders</a></p>
+          <p class="or">or put this in <code>.vscode/mcp.json</code>:</p>
+          <div class="code"><pre data-snippet="vscode"></pre></div>
+        </article>
+
+        <article class="install-card">
+          <header><h2>Claude Desktop</h2><span class="tag-line">Config file</span></header>
+          <p>Settings → Developer → Edit Config, add this, then <strong>quit Claude from the system tray</strong> and reopen it. Closing the window is not enough.</p>
+          <div class="code"><pre data-snippet="claude-desktop"></pre></div>
+        </article>
+
+        <article class="install-card">
+          <header><h2>Any other MCP client</h2><span class="tag-line">Windsurf, Zed, your own agent…</span></header>
+          <p>Memnest is a standard stdio MCP server, so any client that can launch one works:</p>
+          <div class="code"><pre data-snippet="generic"></pre></div>
+          <p>Some clients expect the server under a different key (<code>servers</code>, <code>context_servers</code>); the command and arguments are the same.</p>
+        </article>
+
+        <article class="install-card">
+          <header><h2>Share one memory</h2><span class="tag-line">Across clients and people</span></header>
+          <p>Run a <a href="/docs/server">server</a>, create a key scoped to a container, then point every client at it with <code>--url</code> instead of a local database. Everyone sees the same memories, and the dashboard shows what is stored.</p>
+          <div class="code"><pre>memnest keys create --name claude --container user:me
+npx -y @memnest/cli mcp --url https://memnest.example.com   <span class="c"># with MEMNEST_KEY set</span></pre></div>
+        </article>
+      </section>
+
+      <section class="after-install">
+        <h2>After installing</h2>
+        <div class="cards">
+          <div class="card static"><b>1 · Teach it something</b><span>"Remember that I deploy only after 2pm on Fridays." It calls <code>remember</code> and stores one atomic fact.</span></div>
+          <div class="card static"><b>2 · Open a new chat</b><span>Ask "when can I deploy?". It calls <code>recall</code> and answers from memory, not from this conversation.</span></div>
+          <div class="card static"><b>3 · Change your mind</b><span>"Actually we deploy any time now." The old fact becomes history instead of a second, competing truth.</span></div>
+        </div>
+        <p class="lede">Nothing is sent anywhere: memories live in <code>~/.memnest/memnest.db</code> on your machine. See <a href="/docs/managing">Managing your memories</a> to read, correct or erase them, and <a href="/docs/chat">Chat clients</a> for read-only mode and shared setups.</p>
+      </section>
+
+      <section class="faq-block">
+        <h2>Questions</h2>
+        <details class="faq"><summary>Do I need a model or a database?</summary><div><p>No. <code>remember</code> and <code>recall</code> work immediately with SQLite and keyword search. Add a <a href="/docs/models">completion model</a> to have Memnest extract facts from whole conversations by itself, and Postgres + pgvector for semantic search.</p></div></details>
+        <details class="faq"><summary>Can the assistant read another person's memories?</summary><div><p>No. The container is fixed by your configuration or the API key, and no tool takes one as an argument, so text the model reads cannot redirect it. See <a href="/docs/security">Security</a>.</p></div></details>
+        <details class="faq"><summary>Can I stop it writing to memory?</summary><div><p>Add <code>--read-only</code> to the arguments. The assistant can still recall, view history and read the profile, but cannot store, change or forget anything.</p></div></details>
+        <details class="faq"><summary>Where do I see everything it has stored?</summary><div><p><code>memnest memories list --all --container user:me --db ~/.memnest/memnest.db</code>, or run the <a href="/docs/server">dashboard</a> against the same database for the graph, lineage and traces.</p></div></details>
+        <details class="faq"><summary>The command needs npm. Is that required?</summary><div><p><code>npx</code> comes with Node.js, which most of these clients already need. If you would rather not use it, install the CLI globally (<code>npm i -g @memnest/cli</code>) and use <code>memnest</code> as the command, or point the client at a Node binary and the CLI's path.</p></div></details>
+      </section>
+    </main>
+
+    <footer class="site">
+      <div class="wrap wide">
+        <span>Memnest · MIT licensed</span>
+        <nav aria-label="Footer">
+          <a href="/">Home</a>
+          <a href="/docs/">Docs</a>
+          <a href="https://github.com/anidoesdev/MemNest" rel="noopener">GitHub</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

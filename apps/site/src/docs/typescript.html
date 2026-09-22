@@ -1,0 +1,83 @@
+<p>The engine and the HTTP client implement the same interface, <code>MemnestApi</code>. Start embedded on SQLite, move to Postgres or a server later, and your application code does not change.</p>
+
+<h2 id="install">Install</h2>
+<div class="code"><pre>npm install @memnest/core @memnest/store-sqlite     <span class="c"># embedded, SQLite</span>
+npm install @memnest/store-postgres                 <span class="c"># or Postgres + pgvector</span>
+npm install @memnest/client                         <span class="c"># or talk to a running server</span></pre></div>
+
+<h2 id="embedded">Embedded</h2>
+<div class="code"><pre><span class="k">import</span> { createMemnest, scopeOf } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+<span class="k">import</span> { createSqliteStore } <span class="k">from</span> <span class="s">'@memnest/store-sqlite'</span>;
+
+<span class="k">const</span> store = createSqliteStore({ filename: <span class="s">'memnest.db'</span>, autoMigrate: <span class="k">true</span> });
+<span class="k">const</span> memnest = createMemnest({ store, queue: store.jobQueue() });
+
+<span class="c">// Returns as soon as the text is indexed; extraction runs in a job.</span>
+<span class="k">await</span> memnest.add({
+  containerTag: <span class="s">'user:123'</span>,
+  customId: conversationId,        <span class="c">// turns sharing this id are extracted as one session</span>
+  content: [{ role: <span class="s">'user'</span>, content: <span class="s">'I prefer Postgres.'</span> }],
+});
+
+<span class="k">const</span> { memories, chunks, trace } = <span class="k">await</span> memnest.search(
+  <span class="s">'which database?'</span>, scopeOf(<span class="s">'user:123'</span>), { tokenBudget: <span class="s">400</span> },
+);</pre></div>
+<p>Extraction needs a completion model and a worker in the process: pass <code>completion</code> to <code>createMemnest</code> and call <code>memnest.startWorker()</code>, or run <code>memnest worker</code> beside your app. Until then chunks are searchable but no facts are extracted.</p>
+
+<h2 id="postgres">Postgres with embeddings</h2>
+<div class="code"><pre><span class="k">import</span> { createMemnest } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+<span class="k">import</span> { ollamaCompletion, ollamaEmbeddings } <span class="k">from</span> <span class="s">'@memnest/providers'</span>;
+<span class="k">import</span> { createPostgresStore } <span class="k">from</span> <span class="s">'@memnest/store-postgres'</span>;
+
+<span class="k">const</span> store = <span class="k">await</span> createPostgresStore({ connectionString: process.env.MEMNEST_DATABASE_URL });
+<span class="k">const</span> memnest = createMemnest({
+  store,
+  queue: store.jobQueue(),
+  completion: ollamaCompletion({ model: <span class="s">'llama3.1:8b'</span> }),
+  embedder: ollamaEmbeddings({ model: <span class="s">'nomic-embed-text'</span> }),
+});
+memnest.startWorker();</pre></div>
+<p>Run <code>memnest migrate</code> once against the database. Jobs are claimed with <code>SKIP LOCKED</code>, so any number of workers can share it.</p>
+
+<h2 id="client">Against a server</h2>
+<div class="code"><pre><span class="k">import</span> { createMemnestClient } <span class="k">from</span> <span class="s">'@memnest/client'</span>;
+<span class="k">import</span> { scopeOf } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+
+<span class="k">const</span> memnest = createMemnestClient({ baseUrl: <span class="s">'http://localhost:8787'</span>, apiKey: process.env.MEMNEST_KEY });
+<span class="k">const</span> { memories } = <span class="k">await</span> memnest.search(<span class="s">'which database?'</span>, scopeOf(<span class="s">'user:123'</span>), { tokenBudget: <span class="s">400</span> });</pre></div>
+<p>Works in Node, browsers and workers. A key scoped to one container can only ever reach that container.</p>
+
+<h2 id="api">The API</h2>
+<div class="code"><pre><span class="c">// Implemented by the embedded engine and by @memnest/client.</span>
+<span class="k">interface</span> MemnestApi {
+  add(input): Promise&lt;AddResult&gt;;                    <span class="c">// returns at 'indexed'</span>
+  getDocument(scope, id); deleteDocument(scope, id);  <span class="c">// tombstone: text erased, source kept</span>
+
+  addMemories(input): Promise&lt;Memory[]&gt;;             <span class="c">// direct write, provenance still recorded</span>
+  getMemory(scope, id); listMemories(scope, page?, filter?);
+  getLineage(scope, memoryId); forget(scope, memoryId); graph(scope, opts?);
+
+  searchMemories(query, scope, opts?);               <span class="c">// facts only</span>
+  searchDocuments(query, scope, opts?);               <span class="c">// source chunks only</span>
+  search(query, scope, opts?);                        <span class="c">// both, plus the trace</span>
+
+  profile(scope); rebuildProfile(scope);
+  deleteContainer(scope);                             <span class="c">// hard delete</span>
+  listExtractionRuns(scope, opts?);
+  close();
+}</pre></div>
+<p>The embedded engine adds what only the process owning the store can do: <code>startWorker()</code>, <code>processDueJobs()</code> and <code>backfillEmbeddings(scope)</code>.</p>
+
+<h2 id="errors">Errors</h2>
+<div class="code"><pre><span class="k">import</span> { MemnestError } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+
+<span class="k">try</span> {
+  <span class="k">await</span> memnest.forget(scope, id);
+} <span class="k">catch</span> (error) {
+  <span class="k">if</span> (error <span class="k">instanceof</span> MemnestError &amp;&amp; error.code === <span class="s">'not_found'</span>) <span class="c">/* … */</span>;
+}</pre></div>
+<p>Codes: <code>validation</code>, <code>not_found</code>, <code>scope_violation</code>, <code>provenance</code>, <code>configuration</code>, <code>provider</code>, <code>unauthorized</code>.</p>
+
+<h2 id="testing">Testing without a database or a model</h2>
+<p><code>@memnest/core/testing</code> ships an in-memory store, a fixed clock, deterministic ids, a hash embedder and a scripted model, so your tests exercise the real engine with no I/O. It is what <a href="/#preview">the live preview</a> on this site runs.</p>
+<div class="code"><pre><span class="k">import</span> { createInMemoryStore, fixedClock, hashEmbedder, scriptedModel } <span class="k">from</span> <span class="s">'@memnest/core/testing'</span>;</pre></div>

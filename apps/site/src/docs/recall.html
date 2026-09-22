@@ -1,0 +1,63 @@
+<p><code>search()</code> returns three things: <strong>memories</strong> (facts for the prompt), <strong>chunks</strong> (source text for grounding) and a <strong>trace</strong>. Memories are packed first; chunks share what is left of the budget.</p>
+
+<div class="code"><pre><span class="k">const</span> { memories, chunks, trace } = <span class="k">await</span> memnest.search(question, scope, { tokenBudget: <span class="s">400</span> });
+<span class="c">// memnest.searchMemories(…) skips chunk retrieval entirely.</span></pre></div>
+
+<h2 id="options">Options</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>tokenBudget</code></td><td>2000</td><td>Most tokens to return. <code>trace.budget.used</code> is exactly the included total.</td></tr>
+      <tr><td><code>candidates</code></td><td>50</td><td>Pool size requested from each retriever.</td></tr>
+      <tr><td><code>rerank</code></td><td>off</td><td>An LLM pass over the top 20, dropping scores below 0.2. Costs a model call.</td></tr>
+      <tr><td><code>minVectorScore</code></td><td>0</td><td>Ignore vector hits at or below this cosine similarity. Vector search always returns something, so this floor matters.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="trace">The trace</h2>
+<p>Every candidate from either retriever appears once, with where it was found and what happened to it: <code>lexicalRank</code> and <code>lexicalScore</code>, <code>vectorRank</code> and <code>vectorScore</code>, the fused <code>rrfScore</code>, a <code>rerankScore</code> when reranked, its token cost, and either <code>included</code> or a reason:</p>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>not-latest</code></td><td>A newer version replaced it. This is the one that makes stale answers impossible.</td></tr>
+      <tr><td><code>forgotten</code></td><td>Someone forgot it.</td></tr>
+      <tr><td><code>expired</code></td><td>Its <code>validUntil</code> has passed.</td></tr>
+      <tr><td><code>rerank</code></td><td>The reranker scored it too low.</td></tr>
+      <tr><td><code>budget</code></td><td>It did not fit in the token budget.</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>When an answer looks wrong, the trace usually says why in one line: the fact was there but excluded, or never retrieved at all.</p>
+
+<h2 id="degraded">Degradation is explicit</h2>
+<p>When a retriever cannot run, <code>trace.degraded</code> says why instead of quietly returning less:</p>
+<ul>
+  <li><code>lexical-only</code>: the store has no vector search (SQLite).</li>
+  <li><code>lexical-only: no embedding provider configured</code>.</li>
+  <li><code>lexical-only: container has no embeddings yet</code> — run <code>memnest backfill</code>.</li>
+  <li><code>lexical-only: query embedding failed (…)</code>.</li>
+  <li><code>rerank failed (…); fused order kept</code>.</li>
+</ul>
+<p>The engine never branches on which store it has, only on what that store reports it can do.</p>
+
+<h2 id="hybrid">How ranking works</h2>
+<p>Keyword and vector search run in parallel and are fused with reciprocal rank fusion (k = 60), which needs no score calibration between the two. The fused list is filtered to what is still true, optionally reranked, then packed until the budget is spent. <code>user</code> is treated as a stopword for keyword search, because extraction writes nearly every memory about "the user", and it would otherwise match everything.</p>
+
+<h2 id="profiles">Profiles</h2>
+<p>A profile is the summary you put in a system prompt every turn, instead of searching for basics:</p>
+<div class="code"><pre><span class="k">const</span> { text, stable, recent, stale } = <span class="k">await</span> memnest.profile(scopeOf(<span class="s">'user:123'</span>));
+<span class="c">// About the user:
+// - The user works at Stripe as a product manager.
+// - The payments service of the user runs on MySQL.
+//
+// Recent activity:
+// - The user has a dentist appointment on 2026-03-11.</span></pre></div>
+<ul>
+  <li><strong>A cached read.</strong> Rebuilt after 10 memory changes or once a day, never on every write, and claimed atomically so concurrent writers never both rebuild.</li>
+  <li><strong>Safe even when stale.</strong> Forgetting or superseding a memory removes every profile line citing it immediately, so a profile can lag but cannot contradict what is stored.</li>
+  <li><strong>Guarded.</strong> Model-written lines must cite real memories and carry no pronouns or secrets, or a deterministic builder answers instead and the reason is recorded.</li>
+  <li><strong>Works with no model at all</strong>, built deterministically by ranking memories.</li>
+</ul>

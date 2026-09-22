@@ -1,0 +1,69 @@
+<p>Everything the engine does is available over HTTP, so any language can use Memnest. Start a server with <a href="/docs/server">Docker or the CLI</a>, create a key, and call it.</p>
+
+<h2 id="auth">Authentication</h2>
+<div class="code"><pre>curl -H "Authorization: Bearer $MEMNEST_KEY" localhost:8787/v1/memories?containerTag=user:123</pre></div>
+<p>Keys look like <code>mnk_&lt;id&gt;_&lt;secret&gt;</code> and are stored only as argon2id hashes. A key created with <code>--container</code> can reach that container and no other: the scope is resolved in middleware, and handlers never read a container tag from the request. <code>/healthz</code> is the only unauthenticated route.</p>
+
+<h2 id="endpoints">Endpoints</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th></th></tr></thead>
+    <tbody>
+      <tr><td><code>POST</code></td><td><code>/v1/documents</code></td><td>Add a document (<code>202</code>; extraction runs later)</td></tr>
+      <tr><td><code>GET</code> / <code>DELETE</code></td><td><code>/v1/documents/:id</code></td><td>Document with chunks / tombstone it</td></tr>
+      <tr><td><code>POST</code></td><td><code>/v1/search</code></td><td><code>{ query, options?, include? }</code> → <code>{ memories, chunks, trace }</code></td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/profile/:containerTag</code></td><td>Cached profile; <code>POST …/rebuild</code> to build now</td></tr>
+      <tr><td><code>GET</code> / <code>POST</code></td><td><code>/v1/memories</code></td><td>List (<code>limit</code>, <code>after</code>, <code>kind</code>, <code>latestOnly</code>, <code>includeForgotten</code>) / write directly</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/memories/:id</code></td><td>One memory</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/memories/:id/lineage</code></td><td>Its lineage graph</td></tr>
+      <tr><td><code>POST</code></td><td><code>/v1/memories/:id/forget</code></td><td>Soft delete</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/graph/:containerTag</code></td><td>Graph snapshot for a visualisation</td></tr>
+      <tr><td><code>DELETE</code></td><td><code>/v1/containers/:containerTag</code></td><td>Hard delete</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/runs</code></td><td>Extraction runs, newest first</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/events</code></td><td>Server-sent events: job status</td></tr>
+      <tr><td><code>GET</code></td><td><code>/healthz</code></td><td>Liveness, unauthenticated</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="examples">Add and search</h2>
+<div class="code"><pre>curl -X POST localhost:8787/v1/documents -H "Authorization: Bearer $MEMNEST_KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","customId":"chat-42","content":[{"role":"user","content":"We moved payments to MySQL."}]}'
+
+curl -X POST localhost:8787/v1/search -H "Authorization: Bearer $MEMNEST_KEY" -H 'content-type: application/json' \
+  -d '{"containerTag":"user:123","query":"which database?","options":{"tokenBudget":200}}'</pre></div>
+
+<h2 id="python">From Python</h2>
+<div class="code"><pre><span class="k">import</span> os, httpx
+
+BASE = <span class="s">"http://localhost:8787"</span>
+HEADERS = {<span class="s">"Authorization"</span>: f<span class="s">"Bearer {os.environ['MEMNEST_KEY']}"</span>}
+
+<span class="k">def</span> recall(container: str, query: str, budget: int = <span class="s">400</span>) -&gt; list[str]:
+    r = httpx.post(f<span class="s">"{BASE}/v1/search"</span>, headers=HEADERS, json={
+        <span class="s">"containerTag"</span>: container,
+        <span class="s">"query"</span>: query,
+        <span class="s">"options"</span>: {<span class="s">"tokenBudget"</span>: budget},
+        <span class="s">"include"</span>: [<span class="s">"memories"</span>],
+    })
+    r.raise_for_status()
+    <span class="k">return</span> [m[<span class="s">"memory"</span>][<span class="s">"content"</span>] <span class="k">for</span> m <span class="k">in</span> r.json()[<span class="s">"memories"</span>]]
+
+<span class="k">def</span> remember(container: str, conversation_id: str, turns: list[dict]) -&gt; None:
+    httpx.post(f<span class="s">"{BASE}/v1/documents"</span>, headers=HEADERS, json={
+        <span class="s">"containerTag"</span>: container,
+        <span class="s">"customId"</span>: conversation_id,
+        <span class="s">"content"</span>: turns,
+    }).raise_for_status()</pre></div>
+<p>That is the whole <a href="/docs/agents">loop</a> in any language: <code>/v1/search</code> before the model call, <code>/v1/documents</code> after it.</p>
+
+<h2 id="sse">Watching jobs</h2>
+<div class="code"><pre>curl -N localhost:8787/v1/events -H "Authorization: Bearer $MEMNEST_KEY"</pre></div>
+<p>Streams <code>ready</code>, <code>job</code> and <code>ping</code> events for the worker in that server's process, so a UI can show extraction finishing.</p>
+
+<h2 id="notes">Notes</h2>
+<ul>
+  <li><strong>There is no CORS.</strong> Call the API from your backend, not from a browser on another origin. The dashboard is served from the API's own origin.</li>
+  <li><strong>Cookie-authenticated writes</strong> (the dashboard's session) also need an <code>x-memnest-csrf</code> header. Bearer keys do not.</li>
+  <li><strong>Not included yet:</strong> rate limiting, and per-key permissions finer than container scope. Put a proxy in front if you need them.</li>
+</ul>

@@ -1,0 +1,38 @@
+<p>This uses SQLite and direct writes, so it needs no model and no database server. You will watch a fact change, and the old version step aside.</p>
+
+<ol class="steps">
+  <li><strong>Install the CLI</strong>
+    <div class="code"><pre>npm install -g @memnest/cli</pre></div>
+  </li>
+  <li><strong>Create a database and write a fact</strong>
+    <div class="code"><pre>memnest migrate --db demo.db
+memnest memories add "The user prefers Postgres over MongoDB for the payments database." \
+  --container user:123 --db demo.db          <span class="c"># prints the new memory's id</span></pre></div>
+  </li>
+  <li><strong>Write a fact that replaces it</strong>
+    <div class="code"><pre>memnest memories add "The user moved the payments database to MySQL." \
+  --supersedes &lt;id-from-step-2&gt; --container user:123 --db demo.db</pre></div>
+  </li>
+  <li><strong>Ask</strong>
+    <div class="code"><pre>memnest search "what database does this user use?" --container user:123 --budget 200 --db demo.db</pre></div>
+    <p>You get the MySQL memory. The trace lists the Postgres one as excluded, <code>not-latest</code>: still stored, no longer served.</p>
+  </li>
+  <li><strong>Look at the history</strong>
+    <div class="code"><pre>memnest memories list --all --container user:123 --db demo.db
+memnest lineage &lt;mysql-id&gt; --container user:123 --db demo.db</pre></div>
+  </li>
+</ol>
+
+<p class="callout">Direct writes skip extraction, so you set the relation yourself with <code>--supersedes</code>. With a model configured, <code>memnest ingest</code> reads a whole conversation and works the relations out itself: see <a href="/docs/extraction">Extraction</a>.</p>
+
+<h2 id="chat">Or start in your chat</h2>
+<p>To give Claude, Cursor or VS Code a memory instead, with no install and no database:</p>
+<div class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
+<p>Ask it to remember something, then ask about it in a new conversation. <a href="/plugins">Install for your client</a> has one-click links, and <a href="/docs/chat">Chat clients</a> covers what the assistant can then do.</p>
+
+<h2 id="next">Next</h2>
+<div class="cards">
+  <a class="card" href="/docs/concepts"><b>Concepts</b><span>Containers, relations, provenance and traces.</span></a>
+  <a class="card" href="/docs/typescript"><b>TypeScript</b><span>Embed the engine in your own app.</span></a>
+  <a class="card" href="/docs/models"><b>Models</b><span>Switch on extraction and semantic search.</span></a>
+</div>

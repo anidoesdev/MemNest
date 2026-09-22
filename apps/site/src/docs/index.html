@@ -1,0 +1,55 @@
+<p>Memnest is a self-hostable memory engine for AI agents. A vector store returns text that resembles a question. Memnest extracts <strong>atomic facts</strong>, decides how each new fact relates to what is already known, keeps every version, and shows you why it answered the way it did.</p>
+
+<h2 id="why">The problem it solves</h2>
+<p>Facts change. Somebody moves, a service is migrated, a preference reverses. Stored as plain text, the old and new versions look equally relevant, so an agent gets both and picks one, often the wrong one. Memnest resolves each new fact against the ones it already holds:</p>
+<div class="relations">
+  <div class="rel"><span class="pill new">new</span><p>Nothing similar is stored. Written as is, without a model call.</p></div>
+  <div class="rel"><span class="pill">duplicate</span><p>Already known. The existing memory is reinforced and gains a source.</p></div>
+  <div class="rel"><span class="pill updates">updates</span><p>Replaces a fact. The new version is served; the old one is kept as history.</p></div>
+  <div class="rel"><span class="pill extends">extends</span><p>Adds detail. Linked with an edge; both stay current.</p></div>
+</div>
+<p>Only current facts are served. Superseded ones stay in the nest, visible and traceable, just off the live path.</p>
+
+<h2 id="paths">Two paths</h2>
+<div>
+  <div class="path-cap">Write path · add() returns after step 2; the rest runs in a job</div>
+  <div class="flow-wrap">
+    <ol class="flow">
+      <li><div class="st"><b>add()</b><span>chat turns, markdown or text</span></div></li>
+      <li><div class="st"><b>redact + chunk</b><span>secrets stripped, chunks indexed</span></div></li>
+      <li><div class="st"><b>extract</b><span>one model call per quiet session</span></div></li>
+      <li><div class="st"><b>screen</b><span>drop pronouns, secrets, low confidence</span></div></li>
+      <li><div class="st key"><b>resolve</b><span>new · duplicate · updates · extends</span></div></li>
+      <li><div class="st"><b>write</b><span>one transaction, with provenance</span></div></li>
+    </ol>
+  </div>
+</div>
+<div>
+  <div class="path-cap">Read path · search()</div>
+  <div class="flow-wrap">
+    <ol class="flow">
+      <li><div class="st"><b>query</b><span>+ scope + token budget</span></div></li>
+      <li><div class="st"><b>lexical ∥ vector</b><span>run in parallel</span></div></li>
+      <li><div class="st"><b>RRF fuse</b><span>k = 60</span></div></li>
+      <li><div class="st key"><b>filter</b><span>latest, not forgotten, not expired</span></div></li>
+      <li><div class="st"><b>rerank</b><span>optional, LLM</span></div></li>
+      <li><div class="st"><b>pack</b><span>memories, then chunks, to budget</span></div></li>
+    </ol>
+  </div>
+</div>
+<p><a href="/#preview">The live preview</a> runs both paths in your browser, on the real engine.</p>
+
+<h2 id="ways">Three ways to use it</h2>
+<div class="cards">
+  <a class="card" href="/docs/chat"><b>In your chat</b><span>Claude, Cursor or VS Code remember you between conversations, through MCP. No code.</span></a>
+  <a class="card" href="/docs/typescript"><b>In your app</b><span>Embed the engine on SQLite or Postgres, or call a server over HTTP from any language.</span></a>
+  <a class="card" href="/docs/server"><b>As a service</b><span>One server for every client, with scoped keys and a dashboard for people to review memory.</span></a>
+</div>
+
+<h2 id="needs">What it needs</h2>
+<ul>
+  <li><strong>Nothing, to start.</strong> SQLite and keyword search work with no model and no database server.</li>
+  <li><strong>A completion model</strong> to extract facts from raw conversations and resolve them: Ollama, or any OpenAI-compatible endpoint.</li>
+  <li><strong>An embedding model, and Postgres + pgvector</strong> for semantic recall. Without them search still runs on keywords, and the trace says so.</li>
+</ul>
+<p>See <a href="/docs/models">Models and providers</a>.</p>

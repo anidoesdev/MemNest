@@ -1,0 +1,94 @@
+<p>Memory is a loop around your model call: <strong>recall before, remember after</strong>. Memnest does not wrap your model or lock you to a provider — it stores what was learned and gives you the current facts, whichever model you call.</p>
+
+<h2 id="loop">The loop</h2>
+<div class="flow-wrap">
+  <ol class="flow">
+    <li><div class="st"><b>user turn</b><span>a question arrives</span></div></li>
+    <li><div class="st key"><b>recall</b><span>profile + facts for this turn, within a budget</span></div></li>
+    <li><div class="st"><b>your model</b><span>any provider; facts go in the system prompt</span></div></li>
+    <li><div class="st"><b>reply</b><span>grounded in what is true now</span></div></li>
+    <li><div class="st key"><b>add()</b><span>hand the turn back; extraction runs in the background</span></div></li>
+  </ol>
+</div>
+
+<h2 id="minimal">A complete example</h2>
+<p>This works with the embedded engine or the HTTP client, unchanged.</p>
+<div class="code"><pre><span class="k">import</span> { scopeOf } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
+
+<span class="k">export async function</span> answer(userId: <span class="k">string</span>, conversationId: <span class="k">string</span>, question: <span class="k">string</span>) {
+  <span class="k">const</span> scope = scopeOf(<span class="s">`user:${userId}`</span>);
+
+  <span class="c">// 1. What do we know, in general and about this question?</span>
+  <span class="k">const</span> [profile, recalled] = <span class="k">await</span> Promise.all([
+    memnest.profile(scope),
+    memnest.search(question, scope, { tokenBudget: <span class="s">400</span> }),
+  ]);
+
+  <span class="k">const</span> system = [
+    <span class="s">'You are a helpful assistant.'</span>,
+    profile.text,
+    recalled.memories.length ? <span class="s">'Relevant memories:'</span> : <span class="s">''</span>,
+    ...recalled.memories.map((m) =&gt; <span class="s">`- ${m.memory.content}`</span>),
+  ].filter(Boolean).join(<span class="s">'\n'</span>);
+
+  <span class="c">// 2. Your model, whichever it is.</span>
+  <span class="k">const</span> reply = <span class="k">await</span> callYourModel({ system, question });
+
+  <span class="c">// 3. Hand the exchange back. Returns once indexed; facts are extracted in a job.</span>
+  <span class="k">await</span> memnest.add({
+    containerTag: scope.containerTag,
+    customId: conversationId,     <span class="c">// the whole conversation is extracted as one session</span>
+    content: [
+      { role: <span class="s">'user'</span>, content: question },
+      { role: <span class="s">'assistant'</span>, content: reply },
+    ],
+  });
+
+  <span class="k">return</span> reply;
+}</pre></div>
+
+<h2 id="with">With your provider</h2>
+<div class="tabs" role="tablist" data-tabs aria-label="Model provider">
+  <button role="tab" id="a-ai" aria-controls="ap-ai" aria-selected="true" type="button">Vercel AI SDK</button>
+  <button role="tab" id="a-oai" aria-controls="ap-oai" type="button">OpenAI</button>
+  <button role="tab" id="a-anth" aria-controls="ap-anth" type="button">Claude</button>
+  <button role="tab" id="a-local" aria-controls="ap-local" type="button">Local models</button>
+</div>
+<div id="ap-ai" role="tabpanel" aria-labelledby="a-ai" class="panel">
+  <div class="code"><pre><span class="k">const</span> { text } = <span class="k">await</span> generateText({ model, system, prompt: question });</pre></div>
+  <p>Anything that takes a system prompt works: the memories are just text you prepend.</p>
+</div>
+<div id="ap-oai" role="tabpanel" aria-labelledby="a-oai" class="panel" hidden>
+  <div class="code"><pre><span class="k">const</span> completion = <span class="k">await</span> openai.chat.completions.create({
+  model: <span class="s">'gpt-4.1-mini'</span>,
+  messages: [{ role: <span class="s">'system'</span>, content: system }, { role: <span class="s">'user'</span>, content: question }],
+});
+<span class="k">const</span> reply = completion.choices[<span class="s">0</span>].message.content;</pre></div>
+</div>
+<div id="ap-anth" role="tabpanel" aria-labelledby="a-anth" class="panel" hidden>
+  <div class="code"><pre><span class="k">const</span> message = <span class="k">await</span> anthropic.messages.create({
+  model: <span class="s">'claude-sonnet-5'</span>,
+  max_tokens: <span class="s">1024</span>,
+  system,
+  messages: [{ role: <span class="s">'user'</span>, content: question }],
+});</pre></div>
+  <p>To let Claude manage memory itself rather than you injecting it, give it the <a href="/docs/chat">MCP server</a> and it will call <code>recall</code> and <code>remember</code> as tools.</p>
+</div>
+<div id="ap-local" role="tabpanel" aria-labelledby="a-local" class="panel" hidden>
+  <p>Ollama, LM Studio, vLLM and other OpenAI-compatible servers work the same way, both for your own calls and for Memnest's extraction. Nothing has to leave the machine:</p>
+  <div class="code"><pre>export MEMNEST_PROVIDER=ollama MEMNEST_COMPLETION_MODEL=llama3.1:8b</pre></div>
+  <p>See <a href="/docs/models">Models and providers</a>.</p>
+</div>
+
+<h2 id="tools">Or give the model the tools</h2>
+<p>Instead of injecting memories, expose them as tools and let the model decide. That is exactly what <a href="/docs/chat">the MCP server</a> does, and any MCP-capable agent framework can load it. Define them yourself in three lines each: <code>recall(query)</code> → <code>memnest.search</code>, <code>remember(fact, supersedes?)</code> → <code>memnest.addMemories</code>.</p>
+<p class="callout">Injecting is cheaper and predictable; tools let the model ask follow-up questions of memory. Many agents do both: inject the profile every turn, expose <code>recall</code> for anything deeper.</p>
+
+<h2 id="practice">Worth knowing</h2>
+<ul>
+  <li><strong>Pass a <code>customId</code>.</strong> One extraction call per conversation instead of one per message, and later turns resolve against earlier ones.</li>
+  <li><strong>Pick a container per subject, not per conversation.</strong> <code>user:123</code> or <code>customer:acme</code> is what memory belongs to; the conversation is the <code>customId</code>.</li>
+  <li><strong>Budget deliberately.</strong> <code>tokenBudget</code> caps what recall can add to your prompt. <code>trace.budget.used</code> is exactly what you spent.</li>
+  <li><strong><code>add()</code> does not block on the model.</strong> It returns once indexed; extraction happens in a job, so your response time is unaffected.</li>
+  <li><strong>Read the trace when an answer looks wrong.</strong> It names every candidate and why it was dropped, which is usually faster than guessing at the prompt.</li>
+</ul>

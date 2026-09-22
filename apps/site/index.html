@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Memnest · Memory for AI agents that knows what changed</title>
-    <meta name="description" content="Memnest is an open-source, self-hostable memory engine for AI agents. It extracts atomic facts, resolves each new one against what's known, keeps the history, and serves only what's true now. Works over MCP with Claude, Cursor and VS Code." />
+    <meta name="description" content="Memnest is an open-source memory engine for AI agents. It extracts atomic facts, resolves each new one against what is known, keeps the history, and serves only what is true now. Works with Claude, Cursor and VS Code over MCP." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Memnest · Memory for AI agents that knows what changed" />
-    <meta property="og:description" content="Atomic facts, resolved and versioned. Your agent recalls what's true now, and you can see why. Try the live preview: the real engine, running in your browser." />
+    <meta property="og:description" content="Watch memories form, replace each other and expire — in a live graph running the real engine in your browser." />
     <meta property="og:image" content="/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#13201a" />
@@ -21,16 +21,15 @@
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="bar">
-      <div class="wrap">
+      <div class="wrap wide">
         <a class="brand" href="/" aria-label="Memnest home">
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17c4 7 22 7 26 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><path d="M5.5 20.5c5 4 16 4 21 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5" /><ellipse cx="12.5" cy="13" rx="4" ry="5" fill="#1f7680" /><ellipse cx="19.5" cy="13.5" rx="4" ry="5" fill="#6cc6ca" opacity=".55" /></svg>
           Memnest
         </a>
         <nav aria-label="Main">
           <a href="#preview">Live preview</a>
-          <a href="#how">How it works</a>
-          <a href="#integrate">Integrations</a>
-          <a href="/guide">Guide</a>
+          <a href="/docs/">Docs</a>
+          <a href="/plugins">Plugins</a>
         </nav>
         <div class="bar-actions">
           <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
@@ -48,26 +47,15 @@
           <div>
             <div class="eyebrow">Open-source memory engine for AI agents</div>
             <h1>Memory that knows <em>what changed.</em></h1>
-            <p class="lede">A vector store hands your agent everything that looks like the question, the stale and the current mixed together. Memnest pulls out atomic facts, works out whether each new one replaces, enriches or repeats what it already knows, keeps the history, and serves only what's true now.</p>
+            <p class="lede">A vector store hands your agent everything that resembles the question, stale and current mixed together. Memnest stores <strong>atomic facts</strong>, works out whether each new one replaces, enriches or repeats what it already knows, keeps the history, and serves only what is true now.</p>
             <div class="cta-row">
-              <a class="btn primary" href="#preview">Try the live preview</a>
-              <a class="btn ghost" href="/guide#quickstart">Read the quickstart</a>
-            </div>
-            <div class="install">
-              <div class="tabs" role="tablist" data-tabs aria-label="Install">
-                <button role="tab" id="i-mcp" aria-controls="ip-mcp" aria-selected="true" type="button">Claude Code</button>
-                <button role="tab" id="i-npm" aria-controls="ip-npm" type="button">TypeScript</button>
-                <button role="tab" id="i-docker" aria-controls="ip-docker" type="button">Server</button>
-              </div>
-              <div id="ip-mcp" role="tabpanel" aria-labelledby="i-mcp" class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
-              <div id="ip-npm" role="tabpanel" aria-labelledby="i-npm" class="code" hidden><pre>npm install @memnest/core @memnest/store-sqlite</pre></div>
-              <div id="ip-docker" role="tabpanel" aria-labelledby="i-docker" class="code" hidden><pre>git clone https://github.com/anidoesdev/MemNest.git &amp;&amp; cd MemNest
-docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard on :8787</span></pre></div>
+              <a class="btn primary" href="#preview">See the memory graph</a>
+              <a class="btn ghost" href="/plugins">Add to your assistant</a>
             </div>
             <div class="facts-row">
               <span><b>MIT</b> licensed</span>
-              <span><b>SQLite</b> or <b>Postgres + pgvector</b></span>
-              <span><b>Ollama</b> or any OpenAI-compatible model</span>
+              <span><b>Self-hosted</b>, SQLite or Postgres</span>
+              <span>Any <b>LLM</b>, local or hosted</span>
               <span><b>MCP</b> for Claude, Cursor, VS Code</span>
             </div>
           </div>
@@ -78,26 +66,26 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
               <time datetime="2026-03-03">3 Mar</time>
               <div class="fact old">
                 <span class="text">Acme runs its payments service on Postgres.</span>
-                <span class="meta"><span class="pill superseded">superseded</span> mem_0003 · from the onboarding call</span>
+                <span class="meta"><span class="pill superseded">superseded</span> from the onboarding call</span>
               </div>
             </div>
             <div class="ledger-row">
               <time datetime="2026-06-12">12 Jun</time>
               <div class="fact now pulse">
                 <span class="text">Acme runs its payments service on MySQL, migrated from Postgres in June 2026.</span>
-                <span class="meta"><span class="pill updates">updates</span> mem_0003 · from ticket #4411</span>
+                <span class="meta"><span class="pill updates">updates</span> from ticket #4411</span>
               </div>
             </div>
             <div class="ledger-row">
               <time datetime="2026-06-12">12 Jun</time>
               <div class="fact">
                 <span class="text">Acme's payments MySQL cluster runs in eu-west-1.</span>
-                <span class="meta"><span class="pill extends">extends</span> the MySQL fact · both stay current</span>
+                <span class="meta"><span class="pill extends">extends</span> both stay current</span>
               </div>
             </div>
             <div class="ledger-ask">
               <span class="q">search("what database does Acme use?")</span>
-              <span class="a">Agent gets <b>MySQL, in eu-west-1</b>. The Postgres fact is in the trace as <code>not-latest</code>, never in the prompt.</span>
+              <span class="a">The agent gets <b>MySQL, in eu-west-1</b>. The Postgres fact is in the trace as <code>not-latest</code>, never in the prompt.</span>
             </div>
           </figure>
         </div>
@@ -105,30 +93,37 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
 
       <!-- ============ PREVIEW ============ -->
       <section class="block preview-section" id="preview">
-        <div class="wrap">
+        <div class="wrap wide">
           <div class="sec-head">
             <div class="eyebrow">Live preview</div>
-            <h2>See it work. This is the real engine.</h2>
-            <p class="lede">Below, <code>@memnest/core</code> runs in your browser with an in-memory store. Ingest a customer's conversations, watch each fact get screened and resolved, then ask questions and read the trace. The only stand-in is the language model, whose answers are scripted; every rule applied to them is Memnest's own.</p>
+            <h2>Watch memories form, replace each other, and fade.</h2>
+            <p class="lede">This is <code>@memnest/core</code> and the dashboard's own graph renderer, running in your browser on an in-memory store. Ingest a customer's conversations and watch the graph grow: nodes are facts, arrows are replacements, faded nodes are superseded and hollow ones forgotten. The only stand-in is the language model, whose answers are scripted.</p>
           </div>
 
           <div class="pv" id="preview-app">
             <div class="pv-top">
               <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span>container <b>customer:acme</b> · Ledgerly support copilot</span>
+              <span>container <b>customer:acme</b></span>
               <span class="spacer"></span>
               <span class="chip" title="The demo clock"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" stroke-linecap="round" /></svg><span data-pv="clock">3 Mar 2026</span></span>
               <button class="pv-btn" type="button" data-pv="jump" disabled>Jump to 1 Jul</button>
               <button class="pv-btn" type="button" data-pv="reset">Reset</button>
             </div>
             <div class="pv-hint" data-pv="hint" aria-live="polite"><span class="step">Loading</span><span>Starting the engine…</span></div>
-            <div class="pv-grid">
-              <div class="pv-col">
-                <span class="pv-label"><span>1 · Conversations</span><span>ingest in order</span></span>
-                <div data-pv="sessions" class="sessions"></div>
-              </div>
-              <div class="pv-col">
-                <span class="pv-label"><span>2 · Memory</span><span data-pv="count"></span></span>
+
+            <div class="pv-main">
+              <div class="pv-col graph-col">
+                <span class="pv-label"><span>The memory graph</span><span data-pv="count"></span></span>
+                <div class="graph-wrap">
+                  <canvas data-pv="canvas" role="img" aria-label="Memory graph: facts as nodes, replacements as arrows"></canvas>
+                  <div class="graph-labels" data-pv="labels" aria-hidden="true"></div>
+                  <div class="graph-tip" data-pv="tooltip" hidden></div>
+                  <button class="pv-btn fit" type="button" data-pv="fit">Fit</button>
+                </div>
+                <div class="legend" data-pv="legend" role="group" aria-label="Graph legend and filters"></div>
+                <p class="graph-note" data-pv="graph-note" aria-live="polite"></p>
+                <div class="graph-detail" data-pv="detail"></div>
+
                 <div class="pv-tabs" role="tablist" aria-label="Memory views">
                   <button role="tab" type="button" data-pv-tab="memories" aria-selected="true" aria-controls="pv-panel">Memories</button>
                   <button role="tab" type="button" data-pv-tab="log" aria-selected="false" aria-controls="pv-panel">Extraction log</button>
@@ -136,8 +131,12 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
                 </div>
                 <div class="pv-scroll" id="pv-panel" role="tabpanel" data-pv="panel" aria-live="polite"></div>
               </div>
-              <div class="pv-col recall">
-                <span class="pv-label"><span>3 · Recall</span><span>search(query, scope, budget)</span></span>
+
+              <div class="pv-col side-col">
+                <span class="pv-label"><span>1 · Conversations</span><span>ingest in order</span></span>
+                <div data-pv="sessions" class="sessions"></div>
+
+                <span class="pv-label"><span>2 · Ask</span><span>search(query, scope, budget)</span></span>
                 <form class="query-form" data-pv="query-form">
                   <input type="text" id="pv-query" data-pv="query" aria-label="Ask a question" placeholder="Ask about Acme…" />
                   <button class="pv-btn go" type="submit">Ask</button>
@@ -147,55 +146,11 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
                 <div class="answer" data-pv="answer" aria-live="polite"></div>
               </div>
             </div>
+
             <div class="pv-foot">
               <span>Running <code>createMemnest</code> with the in-memory store, <code>hashEmbedder</code> for vectors and a scripted model. Nothing leaves your browser.</span>
               <span>Same code as <code>npm install @memnest/core</code></span>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============ HOW ============ -->
-      <section class="block" id="how">
-        <div class="wrap">
-          <div class="sec-head">
-            <div class="eyebrow">How it works</div>
-            <h2>Two paths: write facts in the background, read what's true now.</h2>
-            <p class="lede"><code>add()</code> returns as soon as the text is indexed. Extraction runs as a job. <code>search()</code> fuses keyword and vector retrieval, drops what's no longer true, and packs the rest into your token budget.</p>
-          </div>
-          <div class="paths">
-            <div>
-              <div class="path-cap">Write path · add()</div>
-              <div class="flow-wrap">
-                <ol class="flow">
-                  <li><div class="st"><b>add()</b><span>chat turns, markdown or text, with a session id</span></div></li>
-                  <li><div class="st"><b>redact + chunk</b><span>credentials stripped before anything is stored</span></div></li>
-                  <li><div class="st"><b>extract</b><span>one model call per quiet session, not per message</span></div></li>
-                  <li><div class="st"><b>screen</b><span>no pronouns, secrets, filler or stale expiries</span></div></li>
-                  <li><div class="st key"><b>resolve</b><span>compare with up to 10 similar memories</span></div></li>
-                  <li><div class="st"><b>write</b><span>one transaction, with provenance to the source</span></div></li>
-                </ol>
-              </div>
-            </div>
-            <div>
-              <div class="path-cap">Read path · search()</div>
-              <div class="flow-wrap">
-                <ol class="flow">
-                  <li><div class="st"><b>query</b><span>+ container scope + token budget</span></div></li>
-                  <li><div class="st"><b>lexical ∥ vector</b><span>full text and embeddings, in parallel</span></div></li>
-                  <li><div class="st"><b>RRF fuse</b><span>reciprocal rank fusion, k = 60</span></div></li>
-                  <li><div class="st key"><b>filter</b><span>latest, not forgotten, not expired</span></div></li>
-                  <li><div class="st"><b>rerank</b><span>optional LLM pass</span></div></li>
-                  <li><div class="st"><b>pack</b><span>memories first, then source chunks</span></div></li>
-                </ol>
-              </div>
-            </div>
-          </div>
-          <div class="relations">
-            <div class="rel"><span class="pill new">new</span><p>Nothing similar is stored. Written as is, without a model call.</p><span class="eg">"Priya wants incident updates by email."</span></div>
-            <div class="rel"><span class="pill">duplicate</span><p>Already known. The memory is reinforced and gains a source.</p><span class="eg">"The team is still six engineers."</span></div>
-            <div class="rel"><span class="pill updates">updates</span><p>Replaces a fact. The new version is served; the old one is kept as history.</p><span class="eg">Postgres → MySQL</span></div>
-            <div class="rel"><span class="pill extends">extends</span><p>Adds detail. Linked with an edge; both stay current.</p><span class="eg">"…runs in eu-west-1."</span></div>
           </div>
         </div>
       </section>
@@ -217,7 +172,7 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
                 <li><span>"…finished moving payments from Postgres to MySQL…"</span><span class="n">0.89</span></li>
                 <li class="leak"><span>"…here's our staging key: sk-demo-0000…"</span><span class="n">0.62</span></li>
               </ul>
-              <div class="verdict wrong">"Acme is on Postgres." Wrong, with a live credential in the prompt.</div>
+              <div class="verdict wrong">"Acme is on Postgres." Wrong, with a credential in the prompt.</div>
             </div>
             <div class="col">
               <h3>Memnest</h3>
@@ -230,85 +185,45 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
             </div>
           </div>
           <div class="pains">
-            <div class="pain"><span class="p">Stale facts keep coming back</span><span class="s">Every new fact is resolved against similar ones. Search serves only the latest version.</span></div>
+            <div class="pain"><span class="p">Stale facts keep coming back</span><span class="s">Every new fact is resolved against similar ones, and search serves only the latest version.</span></div>
             <div class="pain"><span class="p">Overwriting loses accountability</span><span class="s">Nothing is thrown out. Superseded facts stay, linked to what replaced them and where they came from.</span></div>
-            <div class="pain"><span class="p">Nobody can see why the agent said it</span><span class="s">Each search returns a trace. The dashboard shows the graph, lineage and timeline, and a wrong memory can be forgotten.</span></div>
-            <div class="pain"><span class="p">Secrets and small talk end up in memory</span><span class="s">Redaction runs before storage. Pronoun-laden, secret or low-confidence candidates are rejected, with the reason logged.</span></div>
-            <div class="pain"><span class="p">One customer leaks into another</span><span class="s">A container is a hard boundary, down to scoped API keys. Every route is tested for leaks.</span></div>
+            <div class="pain"><span class="p">Nobody can see why the agent said it</span><span class="s">Each search returns a trace, and the dashboard shows the graph, lineage and timeline.</span></div>
+            <div class="pain"><span class="p">Secrets and small talk end up in memory</span><span class="s">Redaction runs before storage; pronoun-laden, secret or low-confidence candidates are rejected with a logged reason.</span></div>
+            <div class="pain"><span class="p">One customer leaks into another</span><span class="s">A container is a hard boundary, down to scoped API keys, and every route is tested for leaks.</span></div>
             <div class="pain"><span class="p">Transcripts blow the context window</span><span class="s">Memories are packed into a token budget, and a profile gives a prompt-ready summary.</span></div>
           </div>
         </div>
       </section>
 
-      <!-- ============ INTEGRATE ============ -->
-      <section class="block" id="integrate">
+      <!-- ============ USE IT ============ -->
+      <section class="block" id="use">
         <div class="wrap">
           <div class="sec-head">
-            <div class="eyebrow">Integrations</div>
-            <h2>One line for an MCP client. One import for your own agent.</h2>
+            <div class="eyebrow">Use it</div>
+            <h2>In your chat, in your code, or as a service.</h2>
           </div>
-          <div class="integrate">
-            <ul class="ways">
-              <li><b>MCP server</b><span>Memory tools for Claude Code, Claude Desktop, Cursor, VS Code and any MCP agent: recall, remember, ingest, forget, history, profile.</span></li>
-              <li><b>Embedded TypeScript</b><span>The engine in your own process, on SQLite or Postgres + pgvector. Core has no runtime dependencies.</span></li>
-              <li><b>Server + client</b><span>REST and SSE with container-scoped API keys, a same-API TypeScript client, and a dashboard for people to review what agents believe.</span></li>
-              <li><b>Any model</b><span>Ollama, OpenAI, or any OpenAI-compatible endpoint (LM Studio, vLLM, Groq, OpenRouter). Completions and embeddings can come from different providers.</span></li>
-            </ul>
-            <div class="panel">
-              <div class="tabs" role="tablist" data-tabs aria-label="Integration examples">
-                <button role="tab" id="t-cc" aria-controls="p-cc" aria-selected="true" type="button">Claude Code</button>
-                <button role="tab" id="t-desk" aria-controls="p-desk" type="button">Claude Desktop · Cursor</button>
-                <button role="tab" id="t-vs" aria-controls="p-vs" type="button">VS Code</button>
-                <button role="tab" id="t-ts" aria-controls="p-ts" type="button">TypeScript</button>
-                <button role="tab" id="t-rest" aria-controls="p-rest" type="button">REST</button>
-              </div>
-              <div id="p-cc" role="tabpanel" aria-labelledby="t-cc" class="panel">
-                <div class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
-                <p>Memories live in <code>~/.memnest/memnest.db</code>, created on first use. No database or model needed to start: <code>remember</code> and <code>recall</code> work out of the box, and extraction switches on once a model is configured.</p>
-              </div>
-              <div id="p-desk" role="tabpanel" aria-labelledby="t-desk" class="panel" hidden>
-                <div class="code"><pre>{
-  <span class="k">"mcpServers"</span>: {
-    <span class="k">"memnest"</span>: {
-      <span class="k">"command"</span>: <span class="s">"npx"</span>,
-      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>]
-    }
-  }
-}</pre></div>
-                <p>In <code>claude_desktop_config.json</code> or <code>.cursor/mcp.json</code>. Add <code>"--url"</code> and a <code>MEMNEST_KEY</code> to share one memory across clients through a Memnest server.</p>
-              </div>
-              <div id="p-vs" role="tabpanel" aria-labelledby="t-vs" class="panel" hidden>
-                <div class="code"><pre>{
-  <span class="k">"servers"</span>: {
-    <span class="k">"memnest"</span>: {
-      <span class="k">"type"</span>: <span class="s">"stdio"</span>,
-      <span class="k">"command"</span>: <span class="s">"npx"</span>,
-      <span class="k">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@memnest/cli"</span>, <span class="s">"mcp"</span>, <span class="s">"--container"</span>, <span class="s">"user:me"</span>]
-    }
-  }
-}</pre></div>
-                <p>In <code>.vscode/mcp.json</code>. The container is configuration: the model can never point the tools at someone else's memory.</p>
-              </div>
-              <div id="p-ts" role="tabpanel" aria-labelledby="t-ts" class="panel" hidden>
-                <div class="code"><pre><span class="k">import</span> { createMemnest, scopeOf } <span class="k">from</span> <span class="s">'@memnest/core'</span>;
-<span class="k">import</span> { createSqliteStore } <span class="k">from</span> <span class="s">'@memnest/store-sqlite'</span>;
-
-<span class="k">const</span> store = createSqliteStore({ filename: <span class="s">'memnest.db'</span>, autoMigrate: <span class="k">true</span> });
-<span class="k">const</span> memnest = createMemnest({ store, queue: store.jobQueue() });
-
-<span class="k">await</span> memnest.add({ containerTag: <span class="s">'user:123'</span>, content: turns });
-<span class="k">const</span> { memories, trace } = <span class="k">await</span> memnest.search(
-  <span class="s">'what database does this user use?'</span>, scopeOf(<span class="s">'user:123'</span>), { tokenBudget: <span class="s">400</span> },
-);</pre></div>
-                <p>Swap in <code>createPostgresStore</code> for hybrid recall with pgvector, or <code>createMemnestClient</code> to talk to a server. Same API.</p>
-              </div>
-              <div id="p-rest" role="tabpanel" aria-labelledby="t-rest" class="panel" hidden>
-                <div class="code"><pre>curl -X POST localhost:8787/v1/search \
-  -H <span class="s">"Authorization: Bearer $MEMNEST_KEY"</span> -H <span class="s">'content-type: application/json'</span> \
-  -d <span class="s">'{"containerTag":"user:123","query":"what database?","options":{"tokenBudget":200}}'</span></pre></div>
-                <p>Keys are stored as argon2id hashes and can be scoped to one container. Documents, search with trace, profiles, lineage, forget, graph and SSE job events.</p>
-              </div>
-            </div>
+          <div class="use-grid">
+            <article class="use-card">
+              <h3>In your chat</h3>
+              <p>Claude, Cursor and VS Code get memory tools over MCP. Nothing to build: one command, and your assistant remembers you between conversations.</p>
+              <div class="code"><pre>claude mcp add memnest -- npx -y @memnest/cli mcp --container user:me</pre></div>
+              <p><a class="btn primary" href="/plugins">Install for your client →</a></p>
+            </article>
+            <article class="use-card">
+              <h3>In your code</h3>
+              <p>Recall before the model call, hand the turn back after it. Any model, local or hosted, and any framework.</p>
+              <div class="code"><pre><span class="k">const</span> { memories } = <span class="k">await</span> memnest.search(question, scope, { tokenBudget: <span class="s">400</span> });
+<span class="k">const</span> reply = <span class="k">await</span> callYourModel({ system: facts(memories), question });
+<span class="k">await</span> memnest.add({ containerTag, customId: chatId, content: turns });</pre></div>
+              <p><a class="btn ghost" href="/docs/agents">Agent integration →</a></p>
+            </article>
+            <article class="use-card">
+              <h3>As a service</h3>
+              <p>One server for every client, with container-scoped keys, a REST API, and a dashboard where a person can see and correct what agents believe.</p>
+              <div class="code"><pre>docker compose up -d
+memnest keys create --name acme-bot --container customer:acme</pre></div>
+              <p><a class="btn ghost" href="/docs/server">Server &amp; dashboard →</a></p>
+            </article>
           </div>
         </div>
       </section>
@@ -321,11 +236,12 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
             <h2>Guarantees, each with a test that fails if it breaks.</h2>
           </div>
           <div class="guarantees">
-            <div class="guarantee"><h3>A container is a hard boundary</h3><p>Every store method and every HTTP route is probed from another container, with a key and with a session. A new route without a probe fails typecheck.</p><span class="how">store-contract + server leakage suites</span></div>
-            <div class="guarantee"><h3>Secrets never reach storage</h3><p>Credentials are redacted before hashing, chunking or saving. The test greps the raw SQLite file, WAL and SHM for them.</p><span class="how">secrets.test.ts</span></div>
+            <div class="guarantee"><h3>A container is a hard boundary</h3><p>Every store method and HTTP route is probed from another container, with a key and with a session. A new route without a probe fails typecheck.</p><span class="how">store-contract + server leakage suites</span></div>
+            <div class="guarantee"><h3>Secrets never reach storage</h3><p>Credentials are redacted before hashing, chunking or saving. The test greps the raw database file, its write-ahead log and shared memory.</p><span class="how">secrets.test.ts</span></div>
             <div class="guarantee"><h3>Every memory has provenance</h3><p>Stores refuse a memory without a source document and extraction run. Even direct writes get one.</p><span class="how">walks every memory back to its source</span></div>
-            <div class="guarantee"><h3>Degradation is never silent</h3><p>When vector search can't run, the trace says why: no embedder, no embeddings yet, or a failed query embedding.</p><span class="how">trace.degraded</span></div>
+            <div class="guarantee"><h3>Degradation is never silent</h3><p>When vector search cannot run, the trace says why: no embedder, no embeddings yet, or a failed query embedding.</p><span class="how">trace.degraded</span></div>
           </div>
+          <p class="lede">More in <a href="/docs/security">Security and privacy</a>.</p>
         </div>
       </section>
 
@@ -334,7 +250,8 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
           <h2>Give your agent a memory it can explain.</h2>
           <p class="lede">Self-hosted, MIT licensed, and small enough to read. Start with one command; move to Postgres and the dashboard when you need them.</p>
           <div class="cta-row">
-            <a class="btn primary" href="/guide#quickstart">Get started</a>
+            <a class="btn primary" href="/docs/quickstart">Get started</a>
+            <a class="btn ghost" href="/plugins">Add to your assistant</a>
             <a class="btn ghost" href="https://github.com/anidoesdev/MemNest" rel="noopener">Star on GitHub</a>
           </div>
         </div>
@@ -342,10 +259,11 @@ docker compose up -d   <span class="c"># Postgres + pgvector, API and dashboard 
     </main>
 
     <footer class="site">
-      <div class="wrap">
+      <div class="wrap wide">
         <span>Memnest · MIT licensed. Ledgerly, Acme and Priya Shah are fictional.</span>
         <nav aria-label="Footer">
-          <a href="/guide">Guide</a>
+          <a href="/docs/">Docs</a>
+          <a href="/plugins">Plugins</a>
           <a href="https://github.com/anidoesdev/MemNest" rel="noopener">GitHub</a>
           <a href="https://www.npmjs.com/org/memnest" rel="noopener">npm</a>
         </nav>

@@ -1,0 +1,49 @@
+<p>Memory holds the most personal data an agent touches. These are the guarantees Memnest makes, and how each is tested.</p>
+
+<h2 id="containers">A container is a hard boundary</h2>
+<p>Every store method takes a <code>Scope</code>; there is no unscoped query path. Over HTTP, the scope is resolved once in middleware from the API key, and handlers never read a container tag from the request body, path or query.</p>
+<p><strong>How it is tested.</strong> The store contract suite has one leakage probe per store method, keyed by the method list, so adding a method without a probe fails typecheck. The server suite calls every route with a key scoped to one container, and again with a session from that key, trying to reach another container through the path, query, body and ids. Both run on the in-memory, SQLite and Postgres stores.</p>
+
+<h2 id="keys">Keys and sessions</h2>
+<ul>
+  <li>Keys look like <code>mnk_&lt;id&gt;_&lt;secret&gt;</code>. Only an argon2id hash of the secret is stored (19 MiB, 2 iterations).</li>
+  <li>Unknown, wrong and revoked keys return the same error, and an unknown key id still costs a hash verification, so a key cannot be probed for existence by timing.</li>
+  <li><code>--container</code> scopes a key to one container. Revoking a key also ends every session issued from it.</li>
+  <li>Dashboard sessions are random 256-bit tokens in an <code>HttpOnly</code>, <code>SameSite=Strict</code>, <code>Secure</code> cookie; only their SHA-256 is stored. Cookie-authenticated writes also require an <code>x-memnest-csrf</code> header, which a cross-site form cannot set.</li>
+</ul>
+
+<h2 id="secrets">Secrets never reach storage</h2>
+<p>Redaction runs before hashing, chunking or persistence, on content and metadata: JWTs, bearer tokens, <code>sk-</code>/<code>rk-</code> keys, AWS access key ids, GitHub tokens, Memnest's own keys, and "my password is …". Extraction candidates carrying one are rejected by the screen, whatever the model returned.</p>
+<p><strong>How it is tested.</strong> The suite ingests credential fixtures, then greps the raw SQLite file, its write-ahead log and shared memory for them. <code>secure_delete</code> is on, so tombstoned documents and deleted containers leave no residue on disk either.</p>
+
+<h2 id="prompt-injection">Prompt injection</h2>
+<p>Memory is a place text you did not write ends up, so treat it as untrusted input to your prompts. Memnest narrows the blast radius:</p>
+<ul>
+  <li><strong>The container is never a tool argument.</strong> In the MCP server it comes from configuration or the key's scope, so text the model reads cannot point the tools at another container.</li>
+  <li><strong>Memories are atomic sentences</strong>, screened for pronouns and secrets, not raw pasted text.</li>
+  <li><strong>Writes are recoverable.</strong> A bad memory can be forgotten, and everything it affected is traceable to the document it came from.</li>
+  <li><strong>Read-only mode</strong> (<code>--read-only</code>) lets an assistant recall without being able to write at all.</li>
+</ul>
+
+<h2 id="deletion">Deletion</h2>
+<div class="tbl">
+  <table>
+    <thead><tr><th>Call</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>forget(scope, id)</code></td><td>Soft delete: out of search and profiles at once, kept for audit.</td></tr>
+      <tr><td><code>deleteDocument(scope, id)</code></td><td>Tombstone: content and chunks erased, the row kept so memories keep a traceable source.</td></tr>
+      <tr><td><code>deleteContainer(scope)</code></td><td>Hard delete of everything in the container, including vectors. The path for an erasure request.</td></tr>
+    </tbody>
+  </table>
+</div>
+<p>A scoped key may delete its own container: deleting your own data is exactly what that path exists for.</p>
+
+<h2 id="data">Where data goes</h2>
+<ul>
+  <li><strong>Self-hosted by default.</strong> SQLite on your machine, or your own Postgres. There is no Memnest service.</li>
+  <li><strong>Model providers see what you send them.</strong> Extraction sends conversation text to your completion provider, and embeddings send chunk and memory text to your embedding provider. With Ollama, both stay local.</li>
+  <li><strong>Partial graphs are never written.</strong> Writes run in a transaction, and a store without transactions refuses to write at all.</li>
+</ul>
+
+<h2 id="not-yet">Not included yet</h2>
+<p>Rate limiting, CORS (serve the dashboard from the API's origin), and per-key permissions finer than container scope. Put a reverse proxy in front for the first two if you expose the server publicly.</p>

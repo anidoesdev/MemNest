@@ -43,7 +43,9 @@ send({ jsonrpc: '2.0', method: 'notifications/initialized' });
 
 send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
 const tools = (await reply(2)).result?.tools?.map((t) => t.name).sort().join(',');
-if (tools !== 'forget,history,ingest,profile,recall,remember') throw new Error(`MCP smoke: tools ${tools}`);
+if (tools !== 'forget,graph_lineage,graph_snapshot,history,ingest,profile,recall,remember,show_graph') {
+  throw new Error(`MCP smoke: tools ${tools}`);
+}
 
 send({
   jsonrpc: '2.0',
@@ -55,6 +57,13 @@ await reply(3);
 send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'recall', arguments: { query: 'tea' } } });
 const recalled = (await reply(4)).result?.content?.[0]?.text ?? '';
 if (!recalled.includes('prefers tea')) throw new Error(`MCP smoke: recall ${recalled}`);
+
+// The graph app's HTML is bundled from the private @memnest/mcp-app: the published package must carry it.
+send({ jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'ui://memnest/graph' } });
+const graphApp = (await reply(5)).result?.contents?.[0];
+if (graphApp?.mimeType !== 'text/html;profile=mcp-app' || !/^<!doctype html>/i.test(graphApp.text ?? '')) {
+  throw new Error(`MCP smoke: graph app ${JSON.stringify(graphApp)?.slice(0, 200)}`);
+}
 
 child.stdin.end();
 const code = await new Promise((resolve) => child.on('exit', resolve));

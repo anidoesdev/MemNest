@@ -1,5 +1,6 @@
 import type { MemoryKind } from '@memnest/core';
 import { useState } from 'react';
+import logoUrl from './logo.png';
 import { KIND_LABEL } from './format';
 import { applyThemeChoice, readThemeChoice, type ThemeChoice } from './themeChoice';
 
@@ -54,15 +55,15 @@ export function ErrorNote({ message }: { message: string | null }) {
   );
 }
 
-/** The Memnest mark: three memories, one of each kind, joined into a small network. */
+/** The Memnest mark: a one-line brain, drawn as a mask so it takes the text colour in either theme. */
 export function Mark({ size = 22 }: { size?: number }) {
+  const mask = `url(${logoUrl}) center / contain no-repeat`;
   return (
-    <svg className="mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M9 21 L16 9 L23 21 Z" className="mark-links" />
-      <circle cx="16" cy="9" r="4.5" className="mark-node kind-fill kind-episode" />
-      <circle cx="9" cy="21" r="4.5" className="mark-node kind-fill kind-fact" />
-      <circle cx="23" cy="21" r="4.5" className="mark-node kind-fill kind-preference" />
-    </svg>
+    <span
+      className="mark"
+      style={{ width: size, height: size, WebkitMask: mask, mask }}
+      aria-hidden="true"
+    />
   );
 }
 

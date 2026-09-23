@@ -21,7 +21,7 @@ function head({ title, summary, canonical }) {
     <meta property="og:image" content="/og.png" />
     <meta name="theme-color" content="#13201a" />
     <link rel="canonical" href="https://memnest.dev${canonical}" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
     <script src="/theme.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,7 +29,7 @@ function head({ title, summary, canonical }) {
     <script type="module" src="/src/docs.ts"></script>`;
 }
 
-const BRAND = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17c4 7 22 7 26 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /><path d="M5.5 20.5c5 4 16 4 21 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5" /><ellipse cx="12.5" cy="13" rx="4" ry="5" fill="#1f7680" /><ellipse cx="19.5" cy="13.5" rx="4" ry="5" fill="#6cc6ca" opacity=".55" /></svg>`;
+const BRAND = `<span class="brand-mark" aria-hidden="true"></span>`;
 
 const THEME_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" stroke-linecap="round" /></svg>`;
 

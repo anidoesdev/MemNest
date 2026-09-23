@@ -224,10 +224,13 @@ p {
   text-decoration: none;
   letter-spacing: -0.01em;
 }
-.brand svg {
+.brand-mark {
+  flex: none;
   width: 28px;
   height: 28px;
-  color: var(--ink);
+  background-color: var(--ink);
+  -webkit-mask: url(/logo.png) center / contain no-repeat;
+  mask: url(/logo.png) center / contain no-repeat;
 }
 .bar nav {
   display: flex;

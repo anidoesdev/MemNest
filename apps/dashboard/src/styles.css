@@ -500,17 +500,9 @@ input[type='number'] {
   gap: 10px;
 }
 .mark {
+  display: inline-block;
   flex: none;
-  overflow: visible;
-}
-.mark-links {
-  fill: none;
-  stroke: var(--baseline);
-  stroke-width: 1.6;
-  stroke-linejoin: round;
-}
-.mark-node {
-  filter: drop-shadow(0 0 calc(var(--glow) * 0.6) var(--k));
+  background-color: currentColor;
 }
 .wordmark {
   margin: 0;

@@ -1,0 +1,7 @@
+/* Inside a chat the dashboard is short and narrow: when it stacks, the finder gets a band, the views the rest. */
+@media (max-width: 900px) {
+  .body,
+  .body.with-detail {
+    grid-template-rows: 190px minmax(0, 1fr);
+  }
+}

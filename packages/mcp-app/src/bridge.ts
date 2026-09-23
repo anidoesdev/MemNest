@@ -1,8 +1,8 @@
-import type { GraphSnapshot, LineageGraph, MemnestApi, Scope, SnapshotOpts } from '@memnest/core';
+import type { MemnestApi, Scope } from '@memnest/core';
 import type { App } from '@modelcontextprotocol/ext-apps';
 
-/** The part of `MemnestApi` the graph controller uses. */
-export type GraphSource = Pick<MemnestApi, 'graph' | 'getLineage'>;
+/** The part of `MemnestApi` the dashboard's controllers use. */
+export type DashboardSource = Pick<MemnestApi, 'graph' | 'getLineage' | 'getMemory' | 'getDocument' | 'listMemories' | 'search' | 'forget'>;
 
 async function callJson<T>(app: App, name: string, args: Record<string, unknown>): Promise<T> {
   const result = await app.callServerTool({ name, arguments: args });
@@ -12,24 +12,23 @@ async function callJson<T>(app: App, name: string, args: Record<string, unknown>
 }
 
 /**
- * Reads the graph through the MCP host, which forwards the calls to the Memnest MCP server.
- * The server is bound to one container, so the scope the controller passes is not sent;
- * `onContainer` learns the real one from each snapshot.
+ * The dashboard's data, read through the MCP host, which forwards each call to the Memnest MCP server.
+ * The server is bound to one container, so the scope the controllers pass is never sent;
+ * `onContainer` learns the real one from the first graph snapshot.
  */
-export function mcpGraphSource(app: App, onContainer?: (containerTag: string) => void): GraphSource {
+export function mcpDashboardSource(app: App, onContainer?: (containerTag: string) => void): DashboardSource {
+  const read = <T>(args: Record<string, unknown>) => callJson<T>(app, 'dashboard_read', args);
   return {
-    graph: async (_scope: Scope, opts?: SnapshotOpts) => {
-      const snapshot = await callJson<GraphSnapshot>(app, 'graph_snapshot', opts?.limit ? { limit: opts.limit } : {});
+    graph: async (_scope: Scope, options) => {
+      const snapshot = await read<Awaited<ReturnType<MemnestApi['graph']>>>({ method: 'graph', ...(options ? { options } : {}) });
       onContainer?.(snapshot.containerTag);
       return snapshot;
     },
-    getLineage: async (_scope: Scope, memoryId: string) => {
-      try {
-        return await callJson<LineageGraph>(app, 'graph_lineage', { memoryId });
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('not_found')) return null;
-        throw error;
-      }
-    },
+    getLineage: (_scope, memoryId) => read({ method: 'getLineage', memoryId }),
+    getMemory: (_scope, memoryId) => read({ method: 'getMemory', memoryId }),
+    getDocument: (_scope, documentId) => read({ method: 'getDocument', documentId }),
+    listMemories: (_scope, page, filter) => read({ method: 'listMemories', ...(page ? { options: page } : {}), ...(filter ? { filter } : {}) }),
+    search: (query, _scope, options) => read({ method: 'search', query, ...(options ? { options } : {}) }),
+    forget: (_scope, memoryId) => callJson(app, 'dashboard_forget', { memoryId }),
   };
 }

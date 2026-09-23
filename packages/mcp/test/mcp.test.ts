@@ -1,10 +1,10 @@
 import { createMemnestClient } from '@memnest/client';
-import { createInMemoryAuthStore, createInMemoryJobQueue, createMemnest, scopeOf, type GraphSnapshot, type LineageGraph, type Memnest, type MemnestApi } from '@memnest/core';
+import { createInMemoryAuthStore, createInMemoryJobQueue, createMemnest, scopeOf, type GraphSnapshot, type LineageGraph, type Memnest, type MemnestApi, type Memory, type SearchResponse } from '@memnest/core';
 import { createInMemoryStore, fixedClock, hashEmbedder, sequentialIds } from '@memnest/core/testing';
 import { createServer } from '@memnest/server';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GRAPH_APP_URI, PROFILE_RESOURCE_URI, createMemnestMcpServer, type MemnestMcpOptions } from '../src/index';
+import { DASHBOARD_APP_URI, PROFILE_RESOURCE_URI, createMemnestMcpServer, type MemnestMcpOptions } from '../src/index';
 
 const USER = 'user:123';
 const OTHER = 'user:456';
@@ -48,14 +48,14 @@ describe('memnest MCP server', () => {
   it('lists the tools, the profile resource and the prompt, with server instructions', async () => {
     const { client } = await connect(engine());
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['forget', 'graph_lineage', 'graph_snapshot', 'history', 'ingest', 'profile', 'recall', 'remember', 'show_graph']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['dashboard_forget', 'dashboard_read', 'forget', 'history', 'ingest', 'profile', 'recall', 'remember', 'show_dashboard']);
     expect(tools.find((t) => t.name === 'recall')!.annotations?.readOnlyHint).toBe(true);
     expect(tools.find((t) => t.name === 'forget')!.annotations?.destructiveHint).toBe(true);
     // The container is fixed by configuration; no tool lets the model pick one.
     for (const tool of tools) expect(JSON.stringify(tool.inputSchema)).not.toMatch(/container/i);
 
     const { resources } = await client.listResources();
-    expect(resources.map((r) => r.uri).sort()).toEqual([PROFILE_RESOURCE_URI, GRAPH_APP_URI].sort());
+    expect(resources.map((r) => r.uri).sort()).toEqual([PROFILE_RESOURCE_URI, DASHBOARD_APP_URI].sort());
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name)).toEqual(['with-memory']);
     expect(client.getInstructions()).toContain(USER);
@@ -166,20 +166,22 @@ describe('memnest MCP server', () => {
   it('read-only mode exposes no way to write', async () => {
     const { client, call } = await connect(engine(), { readOnly: true });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['graph_lineage', 'graph_snapshot', 'history', 'profile', 'recall', 'show_graph']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['dashboard_read', 'history', 'profile', 'recall', 'show_dashboard']);
     expect(client.getInstructions()).not.toContain('remember');
     await expect(call('remember', { memories: [{ content: 'x' }] })).rejects.toThrow(/not found/);
   });
 
-  it('serves the graph as an MCP App: a UI resource, a tool that opens it, and data tools only the app sees', async () => {
-    const { client, call } = await connect(engine());
+  it('serves the dashboard as an MCP App: a UI resource, a tool that opens it, and data tools only the app sees', async () => {
+    const memnest = engine();
+    const [foreign] = await memnest.addMemories({ containerTag: OTHER, memories: [{ content: 'The other user lives in Lisbon.' }] });
+    const { client, call } = await connect(memnest);
     const { tools } = await client.listTools();
     const meta = (name: string) => tools.find((t) => t.name === name)!._meta as { ui: { resourceUri: string; visibility?: string[] } };
-    expect(meta('show_graph').ui).toEqual({ resourceUri: GRAPH_APP_URI });
-    expect(meta('graph_snapshot').ui.visibility).toEqual(['app']);
-    expect(meta('graph_lineage').ui.visibility).toEqual(['app']);
+    expect(meta('show_dashboard').ui).toEqual({ resourceUri: DASHBOARD_APP_URI });
+    expect(meta('dashboard_read').ui.visibility).toEqual(['app']);
+    expect(meta('dashboard_forget').ui.visibility).toEqual(['app']);
 
-    const { contents } = await client.readResource({ uri: GRAPH_APP_URI });
+    const { contents } = await client.readResource({ uri: DASHBOARD_APP_URI });
     expect(contents[0]!.mimeType).toBe('text/html;profile=mcp-app');
     expect((contents[0] as { text: string }).text).toMatch(/^<!doctype html>/i);
 
@@ -188,16 +190,24 @@ describe('memnest MCP server', () => {
     const second = await call('remember', { memories: [{ content: 'The user moved the payments database to MySQL.', supersedes: postgresId }] });
     const [mysqlId] = idsIn(second.text);
 
-    expect((await call('show_graph', { search: 'payments' })).text).toContain('2 memories, filtered to "payments"');
+    expect((await call('show_dashboard', { view: 'trace', query: 'payments' })).text).toContain('(trace view): 2 memories, searching "payments"');
 
-    const snapshot = JSON.parse((await call('graph_snapshot')).text) as GraphSnapshot;
+    const read = async <T>(args: Record<string, unknown>) => JSON.parse((await call('dashboard_read', args)).text) as T;
+    const snapshot = await read<GraphSnapshot>({ method: 'graph' });
     expect(snapshot.containerTag).toBe(USER);
     expect(snapshot.nodes.map((n) => n.id).sort()).toEqual([postgresId, mysqlId].sort());
     expect(snapshot.edges).toEqual([{ from: mysqlId, to: postgresId, relation: 'updates' }]);
+    expect((await read<LineageGraph>({ method: 'getLineage', memoryId: mysqlId })).memories).toHaveLength(2);
+    expect((await read<Memory>({ method: 'getMemory', memoryId: postgresId })).isLatest).toBe(false);
+    expect(await read<Memory[]>({ method: 'listMemories', filter: { latestOnly: true } })).toHaveLength(1);
+    expect((await read<SearchResponse>({ method: 'search', query: 'payments database' })).memories[0]!.memory.id).toBe(mysqlId);
+    expect((await call('dashboard_read', { method: 'search' })).text).toMatch(/^validation: /);
 
-    const lineage = JSON.parse((await call('graph_lineage', { memoryId: mysqlId })).text) as LineageGraph;
-    expect(lineage.memories.map((m) => m.id).sort()).toEqual([postgresId, mysqlId].sort());
-    expect((await call('graph_lineage', { memoryId: 'mem_nope' })).text).toMatch(/^not_found: /);
+    // The scope is the server's: another container's ids read as missing, and cannot be forgotten.
+    expect(await read({ method: 'getMemory', memoryId: foreign!.id })).toBeNull();
+    expect((await call('dashboard_forget', { memoryId: foreign!.id })).isError).toBe(true);
+    const forgotten = await read<Memory>({ method: 'getMemory', memoryId: mysqlId });
+    expect(JSON.parse((await call('dashboard_forget', { memoryId: forgotten.id })).text).forgottenAt).toBeTruthy();
   });
 
   it('reports invalid input as a tool error the model can read', async () => {

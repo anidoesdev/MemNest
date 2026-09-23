@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The memory graph as an MCP App: one self-contained HTML page that MCP hosts such as Claude render inline.",
+  "description": "The Memnest dashboard as an MCP App: one self-contained HTML page that MCP hosts such as Claude render inline. Reuses apps/dashboard.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

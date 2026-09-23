@@ -4,10 +4,12 @@ import {
   type LineageGraph,
   type Memory,
   type MemnestApi,
+  type MemoryFilter,
+  type Page,
   type Profile,
   type SearchResponse,
 } from '@memnest/core';
-import { GRAPH_APP_HTML } from '@memnest/mcp-app';
+import { DASHBOARD_APP_HTML } from '@memnest/mcp-app';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
@@ -15,10 +17,11 @@ import { z } from 'zod';
 export const MCP_SERVER_NAME = 'memnest';
 export const MCP_SERVER_VERSION = '0.1.0';
 export const PROFILE_RESOURCE_URI = 'memnest://profile';
-/** The interactive memory graph, an MCP App that hosts such as Claude render inline. */
-export const GRAPH_APP_URI = 'ui://memnest/graph';
+/** The memory dashboard, an MCP App that hosts such as Claude render inline. */
+export const DASHBOARD_APP_URI = 'ui://memnest/dashboard';
+export const DASHBOARD_VIEWS = ['graph', 'lineage', 'trace', 'timeline'] as const;
 
-/** Most nodes the graph app may load in one call. Matches the dashboard's load limit. */
+/** Most nodes the graph view may load in one call. Matches the dashboard's load limit. */
 const MAX_GRAPH_NODES = 10_000;
 
 /** Upper bounds that keep one tool call from flooding the prompt or the store. */
@@ -57,7 +60,7 @@ function text(value: string): CallToolResult {
   return { content: [{ type: 'text', text: value }] };
 }
 
-/** Data for the graph app, which parses it; hidden from the model by the tool's visibility. */
+/** Data for the dashboard app, which parses it; hidden from the model by the tool's visibility. */
 function json(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 }
@@ -189,7 +192,7 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
     {
       title: 'Recall memories',
       description:
-        'Search long-term memory for facts relevant to a question. Returns only current facts (superseded, forgotten and expired ones are left out), with their ids, plus source excerpts when they fit the token budget.',
+        "Search the user's Memnest long-term memory for facts relevant to a question. Returns only current facts (superseded, forgotten and expired ones are left out), with their ids, plus source excerpts when they fit the token budget. Use it when the user asks what you remember or know about them, and before answering anything that may depend on earlier sessions.",
       inputSchema: z.object({
         query: z.string().min(1).describe('A natural-language question or topic, e.g. "which database does the payments service use?"'),
         tokenBudget: z
@@ -249,73 +252,83 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
 
   registerAppResource(
     server,
-    'graph',
-    GRAPH_APP_URI,
+    'dashboard',
+    DASHBOARD_APP_URI,
     {
-      title: `Memnest graph of ${scope.containerTag}`,
-      description: 'An interactive map of the memories: kinds, reinforcement, and how they update and extend each other.',
+      title: `Memnest dashboard of ${scope.containerTag}`,
+      description: 'The memories to explore: a graph, lineage, retrieval trace and timeline, with search and details.',
       mimeType: RESOURCE_MIME_TYPE,
     },
     async (uri) => ({
-      contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: GRAPH_APP_HTML, _meta: { ui: { prefersBorder: true } } }],
+      contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: DASHBOARD_APP_HTML, _meta: { ui: { prefersBorder: true } } }],
     }),
   );
 
   registerAppTool(
     server,
-    'show_graph',
+    'show_dashboard',
     {
-      title: 'Show memory graph',
+      title: 'Show memory dashboard',
       description:
-        'Open an interactive graph of everything remembered, for the user to explore. Use when the user asks to see, visualise or browse their memories. Optionally narrow it to memories containing some words, or highlight one memory\'s history.',
+        "Open the user's Memnest dashboard in the chat: search and browse memories, see them as a graph, how each one changed (lineage), why a question recalls what it does (retrieval trace), and a timeline. Use when the user asks to see, visualise, browse or inspect their memories.",
       inputSchema: z.object({
-        search: z.string().optional().describe('Show only memories containing all these words.'),
-        memoryId: z.string().optional().describe('Highlight this memory and the versions it replaced or was replaced by.'),
+        view: z.enum(DASHBOARD_VIEWS).optional().describe('The view to open. Default graph.'),
+        query: z.string().optional().describe('Search the memories for this, and run it in the retrieval trace.'),
+        memoryId: z.string().optional().describe('Open this memory: its details, and its lineage highlighted in the graph.'),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
-      _meta: { ui: { resourceUri: GRAPH_APP_URI } },
+      _meta: { ui: { resourceUri: DASHBOARD_APP_URI } },
     },
-    async ({ search, memoryId }) =>
+    async ({ view, query, memoryId }) =>
       guarded(async () => {
         const snapshot = await memnest.graph(scope, { limit: 1 });
-        const focus = [search ? `filtered to "${search}"` : '', memoryId ? `highlighting ${memoryId}` : ''].filter(Boolean).join(', ');
+        const focus = [query ? `searching "${query}"` : '', memoryId ? `with ${memoryId} open` : ''].filter(Boolean).join(', ');
         return text(
-          `Showing the memory graph of ${scope.containerTag}: ${snapshot.totalMemories} memories${focus ? `, ${focus}` : ''}. ` +
-            'The user can filter, zoom and click a memory to see its history.',
+          `Showing the Memnest dashboard of ${scope.containerTag} (${view ?? 'graph'} view): ${snapshot.totalMemories} memories${focus ? `, ${focus}` : ''}. ` +
+            'The user can search, switch views, inspect a memory and forget a wrong one.',
         );
       }),
   );
 
   registerAppTool(
     server,
-    'graph_snapshot',
+    'dashboard_read',
     {
-      title: 'Graph data',
-      description: 'Memories and their relations as JSON, for the graph view.',
-      inputSchema: z.object({ limit: z.number().int().min(1).max(MAX_GRAPH_NODES).optional() }),
+      title: 'Dashboard data',
+      description: "Reads for the dashboard view, as JSON. Always within this server's container.",
+      inputSchema: z.object({
+        method: z.enum(['graph', 'getLineage', 'getMemory', 'getDocument', 'listMemories', 'search']),
+        memoryId: z.string().optional(),
+        documentId: z.string().optional(),
+        query: z.string().optional(),
+        /** Passed through to the engine: SnapshotOpts, SearchOptions, or Page for listMemories. */
+        options: z.record(z.string(), z.unknown()).optional(),
+        /** listMemories only: MemoryFilter. */
+        filter: z.record(z.string(), z.unknown()).optional(),
+      }),
       annotations: { readOnlyHint: true, openWorldHint: false },
-      _meta: { ui: { resourceUri: GRAPH_APP_URI, visibility: ['app'] } },
+      _meta: { ui: { resourceUri: DASHBOARD_APP_URI, visibility: ['app'] } },
     },
-    async ({ limit }) =>
-      guarded(async () =>
-        json(await memnest.graph(scope, { limit: limit ?? MAX_GRAPH_NODES, includeSuperseded: true, includeForgotten: true })),
-      ),
-  );
-
-  registerAppTool(
-    server,
-    'graph_lineage',
-    {
-      title: 'Lineage data',
-      description: 'One memory\'s lineage as JSON, for the graph view.',
-      inputSchema: z.object({ memoryId: z.string().min(1) }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
-      _meta: { ui: { resourceUri: GRAPH_APP_URI, visibility: ['app'] } },
-    },
-    async ({ memoryId }) =>
+    async ({ method, memoryId, documentId, query, options: opts, filter }) =>
       guarded(async () => {
-        const graph = await memnest.getLineage(scope, memoryId);
-        return graph ? json(graph) : notFound(memoryId);
+        const need = (value: string | undefined, name: string) => {
+          if (!value) throw Object.assign(new Error(`${method} needs ${name}`), { code: 'validation' });
+          return value;
+        };
+        switch (method) {
+          case 'graph':
+            return json(await memnest.graph(scope, { limit: MAX_GRAPH_NODES, ...opts }));
+          case 'getLineage':
+            return json(await memnest.getLineage(scope, need(memoryId, 'memoryId')));
+          case 'getMemory':
+            return json(await memnest.getMemory(scope, need(memoryId, 'memoryId')));
+          case 'getDocument':
+            return json(await memnest.getDocument(scope, need(documentId, 'documentId')));
+          case 'listMemories':
+            return json(await memnest.listMemories(scope, opts as Page | undefined, filter as MemoryFilter | undefined));
+          case 'search':
+            return json(await memnest.search(need(query, 'query'), scope, opts));
+        }
       }),
   );
 
@@ -346,7 +359,7 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
     {
       title: 'Remember facts',
       description:
-        'Store durable facts or preferences, one self-contained sentence each. Exact duplicates of current memories are skipped. To record a change, call recall first and pass the outdated memory\'s id as supersedes: the old version is kept as history and no longer served.',
+        "Save to the user's Memnest long-term memory. Use it whenever the user asks you to remember, note or keep something in mind, and when you learn a durable fact or preference. Store one self-contained sentence each. Exact duplicates of current memories are skipped. To record a change, call recall first and pass the outdated memory's id as supersedes: the old version is kept as history and no longer served.",
       inputSchema: z.object({
         memories: z
           .array(
@@ -468,6 +481,19 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
         const memory = await memnest.forget(scope, memoryId);
         return text(`Forgot ${memory.id}: ${memory.content}`);
       }),
+  );
+
+  registerAppTool(
+    server,
+    'dashboard_forget',
+    {
+      title: 'Forget from the dashboard',
+      description: 'Forget a memory the user chose in the dashboard, returning it as JSON.',
+      inputSchema: z.object({ memoryId: z.string().min(1) }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: DASHBOARD_APP_URI, visibility: ['app'] } },
+    },
+    async ({ memoryId }) => guarded(async () => json(await memnest.forget(scope, memoryId))),
   );
 
   return server;

@@ -6,7 +6,7 @@ const html = readFileSync(new URL('index.html', dist), 'utf8');
 
 writeFileSync(
   new URL('index.js', dist),
-  `/** The memory graph MCP App: a self-contained HTML page. */\nexport const GRAPH_APP_HTML = ${JSON.stringify(html)};\n`,
+  `/** The memory dashboard MCP App: a self-contained HTML page. */\nexport const DASHBOARD_APP_HTML = ${JSON.stringify(html)};\n`,
 );
-writeFileSync(new URL('index.d.ts', dist), '/** The memory graph MCP App: a self-contained HTML page. */\nexport declare const GRAPH_APP_HTML: string;\n');
-console.log(`GRAPH_APP_HTML: ${(html.length / 1024).toFixed(0)} KiB`);
+writeFileSync(new URL('index.d.ts', dist), '/** The memory dashboard MCP App: a self-contained HTML page. */\nexport declare const DASHBOARD_APP_HTML: string;\n');
+console.log(`DASHBOARD_APP_HTML: ${(html.length / 1024).toFixed(0)} KiB`);

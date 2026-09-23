@@ -63,8 +63,15 @@ Use one container per person or project (`user:me`, `project:billing`). Each is 
 | `forget` | Stops serving a memory that is wrong. It stays in history. |
 | `history` | Where a memory came from and how it changed. |
 | `profile` | A short, prompt-ready summary of what is remembered. |
+| `show_graph` | Opens the interactive memory graph inside the chat (see below). Optionally filtered by words, or highlighting one memory's history. |
 
 Also: the profile as the resource `memnest://profile`, and a `with-memory` prompt that loads the profile with instructions. The server sends instructions telling the model when to recall and how to record changes.
+
+### Memory graph in the chat
+
+`show_graph` is an [MCP App](https://modelcontextprotocol.io/docs/extensions/apps): in hosts that support them, such as Claude, it renders the dashboard's graph view inline. Ask "show me my memory graph". Filter by words and kinds, zoom and pan, click a memory for its details and history, or hand it back with **Ask Claude**. **Refresh** picks up memories added since it opened; **Full screen** appears when the host supports it.
+
+The page is `ui://memnest/graph` (built from `packages/mcp-app`). It reads data through two tools only it can see, `graph_snapshot` and `graph_lineage`, so it needs no server, key or network access. Hosts without MCP Apps get a text summary from `show_graph`.
 
 ## Options
 
@@ -74,7 +81,7 @@ Also: the profile as the resource `memnest://profile`, and a `with-memory` promp
 | `--db <path>` | `MEMNEST_DB` | SQLite file. Default `~/.memnest/memnest.db`. |
 | `--database-url <url>` | `MEMNEST_DATABASE_URL` | Postgres + pgvector instead (run `memnest migrate` first). |
 | `--url <url>` | `MEMNEST_SERVER_URL` | Use a Memnest server instead of a local database, with `MEMNEST_KEY`. |
-| `--read-only` | `MEMNEST_MCP_READ_ONLY=true` | Only `recall`, `history` and `profile`. |
+| `--read-only` | `MEMNEST_MCP_READ_ONLY=true` | Only `recall`, `history`, `profile` and the graph. |
 | | `MEMNEST_WORKER` | `auto` (default): run extraction when a completion provider is configured. `on` requires one; `off` never runs it. |
 
 Model providers use the usual `MEMNEST_*` variables (`memnest providers env`). Without a completion provider, `remember` works fully; `ingest` stores text for search but extracts nothing.

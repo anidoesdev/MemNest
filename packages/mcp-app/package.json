@@ -1,0 +1,35 @@
+{
+  "name": "@memnest/mcp-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The memory graph as an MCP App: one self-contained HTML page that MCP hosts such as Claude render inline.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && node scripts/emit.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@memnest/core": "workspace:^",
+    "@memnest/ui-core": "workspace:^",
+    "@memnest/ui-react": "workspace:^",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/core": "^2.0.0",
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

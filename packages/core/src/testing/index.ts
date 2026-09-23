@@ -206,3 +206,5 @@ export function credentialTranscript(): Array<{ role: string; content: string }>
     { role: 'user', content: 'Anyway, I prefer Postgres over MongoDB for the payments service.' },
   ];
 }
+
+export { seedMemories, type SeedOptions } from './seed';

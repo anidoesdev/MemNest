@@ -1,6 +1,5 @@
-import { seedMemories } from '@memnest/cli';
+import { createInMemoryStore, seedMemories, sequentialIds } from '@memnest/core/testing';
 import { createMemnest, type Memnest } from '@memnest/core';
-import { createInMemoryStore, sequentialIds } from '@memnest/core/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildGraphScene, createGraphController, drawScene, toScreen, type Canvas2DLike, type GraphState, type GraphTheme, type Observable } from '../src/index';
 

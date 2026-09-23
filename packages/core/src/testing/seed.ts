@@ -1,4 +1,5 @@
-import type { Memory, MemoryKind, Memnest } from '@memnest/core';
+import type { Memnest } from '../engine';
+import type { Memory, MemoryKind } from '../types';
 
 export interface SeedOptions {
   containerTag: string;

@@ -7,4 +7,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'es2022',
+  // The graph app is private and built alongside: its HTML ships inside this package.
+  noExternal: ['@memnest/mcp-app'],
 });

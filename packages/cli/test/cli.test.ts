@@ -472,7 +472,7 @@ describe('memnest mcp', () => {
 
     try {
       const { client, call, running } = await mcp(['--read-only'], { MEMNEST_SERVER_URL: url, MEMNEST_KEY: key });
-      expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(['history', 'profile', 'recall']);
+      expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(['graph_lineage', 'graph_snapshot', 'history', 'profile', 'recall', 'show_graph']);
       expect(await call('recall', { query: 'anything' })).toContain('Nothing relevant');
       await client.close();
       expect(await running).toBe(0);

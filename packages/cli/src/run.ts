@@ -27,7 +27,7 @@ import { PROVIDER_ENV_VARS, providersFromEnv } from '@memnest/providers';
 import { createJobEventHub, createKeyring, createServer, listen } from '@memnest/server';
 import { createPostgresStore, migrateDatabase } from '@memnest/store-postgres';
 import { createSqliteStore, migrateFile } from '@memnest/store-sqlite';
-import { seedMemories } from './seed';
+import { seedMemories } from '@memnest/core/testing';
 
 export interface CliIO {
   out(text: string): void;

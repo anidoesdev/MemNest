@@ -1,10 +1,10 @@
 import { createMemnestClient } from '@memnest/client';
-import { createInMemoryAuthStore, createInMemoryJobQueue, createMemnest, scopeOf, type Memnest, type MemnestApi } from '@memnest/core';
+import { createInMemoryAuthStore, createInMemoryJobQueue, createMemnest, scopeOf, type GraphSnapshot, type LineageGraph, type Memnest, type MemnestApi } from '@memnest/core';
 import { createInMemoryStore, fixedClock, hashEmbedder, sequentialIds } from '@memnest/core/testing';
 import { createServer } from '@memnest/server';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PROFILE_RESOURCE_URI, createMemnestMcpServer, type MemnestMcpOptions } from '../src/index';
+import { GRAPH_APP_URI, PROFILE_RESOURCE_URI, createMemnestMcpServer, type MemnestMcpOptions } from '../src/index';
 
 const USER = 'user:123';
 const OTHER = 'user:456';
@@ -48,14 +48,14 @@ describe('memnest MCP server', () => {
   it('lists the tools, the profile resource and the prompt, with server instructions', async () => {
     const { client } = await connect(engine());
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['forget', 'history', 'ingest', 'profile', 'recall', 'remember']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['forget', 'graph_lineage', 'graph_snapshot', 'history', 'ingest', 'profile', 'recall', 'remember', 'show_graph']);
     expect(tools.find((t) => t.name === 'recall')!.annotations?.readOnlyHint).toBe(true);
     expect(tools.find((t) => t.name === 'forget')!.annotations?.destructiveHint).toBe(true);
     // The container is fixed by configuration; no tool lets the model pick one.
     for (const tool of tools) expect(JSON.stringify(tool.inputSchema)).not.toMatch(/container/i);
 
     const { resources } = await client.listResources();
-    expect(resources.map((r) => r.uri)).toEqual([PROFILE_RESOURCE_URI]);
+    expect(resources.map((r) => r.uri).sort()).toEqual([PROFILE_RESOURCE_URI, GRAPH_APP_URI].sort());
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name)).toEqual(['with-memory']);
     expect(client.getInstructions()).toContain(USER);
@@ -166,9 +166,38 @@ describe('memnest MCP server', () => {
   it('read-only mode exposes no way to write', async () => {
     const { client, call } = await connect(engine(), { readOnly: true });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['history', 'profile', 'recall']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['graph_lineage', 'graph_snapshot', 'history', 'profile', 'recall', 'show_graph']);
     expect(client.getInstructions()).not.toContain('remember');
     await expect(call('remember', { memories: [{ content: 'x' }] })).rejects.toThrow(/not found/);
+  });
+
+  it('serves the graph as an MCP App: a UI resource, a tool that opens it, and data tools only the app sees', async () => {
+    const { client, call } = await connect(engine());
+    const { tools } = await client.listTools();
+    const meta = (name: string) => tools.find((t) => t.name === name)!._meta as { ui: { resourceUri: string; visibility?: string[] } };
+    expect(meta('show_graph').ui).toEqual({ resourceUri: GRAPH_APP_URI });
+    expect(meta('graph_snapshot').ui.visibility).toEqual(['app']);
+    expect(meta('graph_lineage').ui.visibility).toEqual(['app']);
+
+    const { contents } = await client.readResource({ uri: GRAPH_APP_URI });
+    expect(contents[0]!.mimeType).toBe('text/html;profile=mcp-app');
+    expect((contents[0] as { text: string }).text).toMatch(/^<!doctype html>/i);
+
+    const first = await call('remember', { memories: [{ content: 'The user prefers Postgres for the payments database.' }] });
+    const [postgresId] = idsIn(first.text);
+    const second = await call('remember', { memories: [{ content: 'The user moved the payments database to MySQL.', supersedes: postgresId }] });
+    const [mysqlId] = idsIn(second.text);
+
+    expect((await call('show_graph', { search: 'payments' })).text).toContain('2 memories, filtered to "payments"');
+
+    const snapshot = JSON.parse((await call('graph_snapshot')).text) as GraphSnapshot;
+    expect(snapshot.containerTag).toBe(USER);
+    expect(snapshot.nodes.map((n) => n.id).sort()).toEqual([postgresId, mysqlId].sort());
+    expect(snapshot.edges).toEqual([{ from: mysqlId, to: postgresId, relation: 'updates' }]);
+
+    const lineage = JSON.parse((await call('graph_lineage', { memoryId: mysqlId })).text) as LineageGraph;
+    expect(lineage.memories.map((m) => m.id).sort()).toEqual([postgresId, mysqlId].sort());
+    expect((await call('graph_lineage', { memoryId: 'mem_nope' })).text).toMatch(/^not_found: /);
   });
 
   it('reports invalid input as a tool error the model can read', async () => {

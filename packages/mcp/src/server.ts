@@ -7,12 +7,19 @@ import {
   type Profile,
   type SearchResponse,
 } from '@memnest/core';
+import { GRAPH_APP_HTML } from '@memnest/mcp-app';
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 export const MCP_SERVER_NAME = 'memnest';
 export const MCP_SERVER_VERSION = '0.1.0';
 export const PROFILE_RESOURCE_URI = 'memnest://profile';
+/** The interactive memory graph, an MCP App that hosts such as Claude render inline. */
+export const GRAPH_APP_URI = 'ui://memnest/graph';
+
+/** Most nodes the graph app may load in one call. Matches the dashboard's load limit. */
+const MAX_GRAPH_NODES = 10_000;
 
 /** Upper bounds that keep one tool call from flooding the prompt or the store. */
 const MAX_REMEMBER = 20;
@@ -48,6 +55,15 @@ function failure(error: unknown): CallToolResult {
 
 function text(value: string): CallToolResult {
   return { content: [{ type: 'text', text: value }] };
+}
+
+/** Data for the graph app, which parses it; hidden from the model by the tool's visibility. */
+function json(value: unknown): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(value) }] };
+}
+
+function notFound(memoryId: string): CallToolResult {
+  return failure(Object.assign(new Error(`no memory ${memoryId}`), { code: 'not_found' }));
 }
 
 async function guarded(fn: () => Promise<CallToolResult>): Promise<CallToolResult> {
@@ -202,7 +218,7 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
     async ({ memoryId }) =>
       guarded(async () => {
         const graph = await memnest.getLineage(scope, memoryId);
-        return graph ? text(formatLineage(graph)) : failure(Object.assign(new Error(`no memory ${memoryId}`), { code: 'not_found' }));
+        return graph ? text(formatLineage(graph)) : notFound(memoryId);
       }),
   );
 
@@ -229,6 +245,78 @@ export function createMemnestMcpServer(options: MemnestMcpOptions): McpServer {
       mimeType: 'text/plain',
     },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/plain', text: formatProfile(await memnest.profile(scope)) }] }),
+  );
+
+  registerAppResource(
+    server,
+    'graph',
+    GRAPH_APP_URI,
+    {
+      title: `Memnest graph of ${scope.containerTag}`,
+      description: 'An interactive map of the memories: kinds, reinforcement, and how they update and extend each other.',
+      mimeType: RESOURCE_MIME_TYPE,
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: GRAPH_APP_HTML, _meta: { ui: { prefersBorder: true } } }],
+    }),
+  );
+
+  registerAppTool(
+    server,
+    'show_graph',
+    {
+      title: 'Show memory graph',
+      description:
+        'Open an interactive graph of everything remembered, for the user to explore. Use when the user asks to see, visualise or browse their memories. Optionally narrow it to memories containing some words, or highlight one memory\'s history.',
+      inputSchema: z.object({
+        search: z.string().optional().describe('Show only memories containing all these words.'),
+        memoryId: z.string().optional().describe('Highlight this memory and the versions it replaced or was replaced by.'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: GRAPH_APP_URI } },
+    },
+    async ({ search, memoryId }) =>
+      guarded(async () => {
+        const snapshot = await memnest.graph(scope, { limit: 1 });
+        const focus = [search ? `filtered to "${search}"` : '', memoryId ? `highlighting ${memoryId}` : ''].filter(Boolean).join(', ');
+        return text(
+          `Showing the memory graph of ${scope.containerTag}: ${snapshot.totalMemories} memories${focus ? `, ${focus}` : ''}. ` +
+            'The user can filter, zoom and click a memory to see its history.',
+        );
+      }),
+  );
+
+  registerAppTool(
+    server,
+    'graph_snapshot',
+    {
+      title: 'Graph data',
+      description: 'Memories and their relations as JSON, for the graph view.',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(MAX_GRAPH_NODES).optional() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: GRAPH_APP_URI, visibility: ['app'] } },
+    },
+    async ({ limit }) =>
+      guarded(async () =>
+        json(await memnest.graph(scope, { limit: limit ?? MAX_GRAPH_NODES, includeSuperseded: true, includeForgotten: true })),
+      ),
+  );
+
+  registerAppTool(
+    server,
+    'graph_lineage',
+    {
+      title: 'Lineage data',
+      description: 'One memory\'s lineage as JSON, for the graph view.',
+      inputSchema: z.object({ memoryId: z.string().min(1) }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: GRAPH_APP_URI, visibility: ['app'] } },
+    },
+    async ({ memoryId }) =>
+      guarded(async () => {
+        const graph = await memnest.getLineage(scope, memoryId);
+        return graph ? json(graph) : notFound(memoryId);
+      }),
   );
 
   server.registerPrompt(

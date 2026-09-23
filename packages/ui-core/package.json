@@ -71,7 +71,6 @@
     "@memnest/core": "workspace:^"
   },
   "devDependencies": {
-    "@memnest/cli": "workspace:*",
     "@memnest/store-sqlite": "workspace:*",
     "@types/d3-force": "^3.0.10",
     "@types/d3-quadtree": "^3.0.6",
